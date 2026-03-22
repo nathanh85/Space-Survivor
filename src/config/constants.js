@@ -31,12 +31,12 @@ export const REGIONS = {
 
 // --- PLANET TYPES ---
 export const PLANET_TYPES = [
-  { name: 'Rocky',    color: '#8B7355', resources: ['iron_ore', 'silicon', 'carbon'] },
-  { name: 'Ice',      color: '#87CEEB', resources: ['water_ice', 'cryo_crystals'] },
-  { name: 'Volcanic', color: '#FF4500', resources: ['titanium', 'hydrogen_fuel'] },
-  { name: 'Lush',     color: '#32CD32', resources: ['organic_compounds', 'exotic_spores'] },
-  { name: 'Toxic',    color: '#ADFF2F', resources: ['dark_matter_shards', 'plasma_gel'] },
-  { name: 'Barren',   color: '#A0A0A0', resources: ['copper_wire', 'salvage'] },
+  { name: 'Rocky',    color: '#8B7355', resources: ['iron', 'carbon'] },
+  { name: 'Ice',      color: '#87CEEB', resources: ['cryo', 'fuel'] },
+  { name: 'Volcanic', color: '#FF4500', resources: ['titanium', 'plasma'] },
+  { name: 'Lush',     color: '#32CD32', resources: ['carbon', 'fuel'] },
+  { name: 'Toxic',    color: '#ADFF2F', resources: ['darkmatter', 'plasma'] },
+  { name: 'Barren',   color: '#A0A0A0', resources: ['iron', 'neutronium'] },
 ];
 
 // --- SYSTEM NAMES ---

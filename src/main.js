@@ -3,20 +3,22 @@
 // ============================================================
 
 import Phaser from 'phaser';
+import TitleScene from './scenes/TitleScene.js';
 import FlightScene from './scenes/FlightScene.js';
 import GalaxyMapScene from './scenes/GalaxyMapScene.js';
 import WarpScene from './scenes/WarpScene.js';
+import CutsceneScene from './scenes/CutsceneScene.js';
 
 const config = {
   type: Phaser.CANVAS,
   width: 1280,
   height: 800,
-  backgroundColor: '#0a0a18',
+  backgroundColor: '#050510',
   physics: {
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [FlightScene, GalaxyMapScene, WarpScene],
+  scene: [TitleScene, FlightScene, GalaxyMapScene, WarpScene, CutsceneScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
