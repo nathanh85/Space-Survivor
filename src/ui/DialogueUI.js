@@ -57,13 +57,13 @@ export default class DialogueUI {
 
     // Speaker name
     this.speakerText = scene.add.text(0, 0, '', {
-      fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', color: '#87CEEB',
+      fontSize: '13px', fontFamily: '"Press Start 2P", monospace', fontStyle: 'bold', color: '#87CEEB',
     }).setScrollFactor(0);
     this.container.add(this.speakerText);
 
     // Dialogue text
     this.dialogueText = scene.add.text(0, 0, '', {
-      fontSize: '12px', fontFamily: 'monospace', color: '#cccccc',
+      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#cccccc',
       wordWrap: { width: 0 },
       lineSpacing: 4,
     }).setScrollFactor(0);
@@ -71,7 +71,7 @@ export default class DialogueUI {
 
     // Advance hint
     this.advanceHint = scene.add.text(0, 0, '[SPACE / Click to continue]', {
-      fontSize: '9px', fontFamily: 'monospace', color: '#666666',
+      fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#666666',
     }).setOrigin(1, 1).setScrollFactor(0).setVisible(false);
     this.container.add(this.advanceHint);
 
@@ -181,7 +181,7 @@ export default class DialogueUI {
       this.portraitGfx.strokeRect(px, py, PORTRAIT_SIZE, PORTRAIT_SIZE);
 
       const initText = this.scene.add.text(px + PORTRAIT_SIZE / 2, py + PORTRAIT_SIZE / 2, info.initial, {
-        fontSize: '36px', fontFamily: 'monospace', color: info.label,
+        fontSize: '36px', fontFamily: '"Press Start 2P", monospace', color: info.label,
       }).setOrigin(0.5).setScrollFactor(0);
       this.container.add(initText);
       this._initTexts.push(initText);

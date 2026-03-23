@@ -83,7 +83,10 @@ export const PLAYER_DEFAULTS = {
 };
 
 // --- BUILD INFO ---
-export const BUILD_VERSION = 'v0.4.1';
+// --- FONT ---
+export const FONT = '"Press Start 2P", monospace';
+
+export const BUILD_VERSION = 'v0.4.2';
 export const BUILD_DATE = '2026-03-23';
 
 // --- COLORS ---

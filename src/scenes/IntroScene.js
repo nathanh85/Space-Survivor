@@ -31,7 +31,7 @@ export default class IntroScene extends Phaser.Scene {
 
     for (let i = 0; i < CRAWL_LINES.length; i++) {
       const t = this.add.text(W / 2, H * 0.35 + i * 36, CRAWL_LINES[i], {
-        fontSize: '16px', fontFamily: 'monospace', color: '#ffffff',
+        fontSize: '10px', fontFamily: '"Press Start 2P", monospace', color: '#ffffff',
         wordWrap: { width: W * 0.7 },
       }).setOrigin(0.5).setAlpha(0);
       this.crawlTexts.push(t);
@@ -56,11 +56,11 @@ export default class IntroScene extends Phaser.Scene {
 
     // Title card
     this.titleText = this.add.text(W / 2, H * 0.4, 'P.E.S.T.S.', {
-      fontSize: '42px', fontFamily: 'monospace', fontStyle: 'bold', color: '#00d4ff',
+      fontSize: '28px', fontFamily: '"Press Start 2P", monospace', color: '#00d4ff',
     }).setOrigin(0.5).setAlpha(0);
 
     this.subtitleText = this.add.text(W / 2, H * 0.5, 'A Space Western', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#f39c12',
+      fontSize: '10px', fontFamily: '"Press Start 2P", monospace', color: '#f39c12',
     }).setOrigin(0.5).setAlpha(0);
 
     this.time.delayedCall(titleDelay, () => {

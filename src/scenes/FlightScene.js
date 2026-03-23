@@ -3,7 +3,7 @@
 // ============================================================
 
 import Phaser from 'phaser';
-import { SYS_W, SYS_H, UNIVERSE_COLS, UNIVERSE_ROWS, DANGER_COLORS, BUILD_VERSION, BUILD_DATE } from '../config/constants.js';
+import { SYS_W, SYS_H, UNIVERSE_COLS, UNIVERSE_ROWS, DANGER_COLORS, BUILD_VERSION, BUILD_DATE, FONT, PLAYER_DEFAULTS } from '../config/constants.js';
 import { generateUniverse, generateSystem } from '../systems/UniverseGenerator.js';
 import Player from '../entities/Player.js';
 import InventorySystem from '../systems/InventorySystem.js';
@@ -51,6 +51,8 @@ export default class FlightScene extends Phaser.Scene {
     this.nearGateTriggered = false;
     this.firstWarpDone = false;
     this.enteredFrontier = false;
+    this.outOfFuel = false;
+    this.outOfFuelTime = 0;
 
     // Text queue (barks, transmissions, dialogues — one at a time)
     this.textQueue = new TextQueue();
@@ -111,31 +113,31 @@ export default class FlightScene extends Phaser.Scene {
     for (let i = 0; i < 4; i++) {
       const y = 12 + i * 20;
       this.barLabels.push(this.add.text(10, y, barConfig[i].label, {
-        fontSize: '16px', fontFamily: 'monospace', color: barConfig[i].lc,
+        fontSize: '10px', fontFamily: FONT, color: barConfig[i].lc,
       }).setScrollFactor(0).setDepth(501));
       this.barValues.push(this.add.text(178, y, '', {
-        fontSize: '15px', fontFamily: 'monospace', color: '#888888',
+        fontSize: '9px', fontFamily: FONT, color: '#888888',
       }).setScrollFactor(0).setDepth(501));
     }
 
     this.sysInfoTexts = [
-      this.add.text(14, 0, '', { fontSize: '15px', fontFamily: 'monospace', color: '#00d4ff' }).setScrollFactor(0).setDepth(501),
-      this.add.text(14, 0, '', { fontSize: '15px', fontFamily: 'monospace', color: '#ffffff' }).setScrollFactor(0).setDepth(501),
-      this.add.text(14, 0, '', { fontSize: '15px', fontFamily: 'monospace', color: '#e74c3c' }).setScrollFactor(0).setDepth(501),
+      this.add.text(14, 0, '', { fontSize: '10px', fontFamily: FONT, color: '#00d4ff' }).setScrollFactor(0).setDepth(501),
+      this.add.text(14, 0, '', { fontSize: '10px', fontFamily: FONT, color: '#ffffff' }).setScrollFactor(0).setDepth(501),
+      this.add.text(14, 0, '', { fontSize: '10px', fontFamily: FONT, color: '#e74c3c' }).setScrollFactor(0).setDepth(501),
     ];
 
     this.controlsText = this.add.text(0, 0, '[W] Thrust  [Mouse] Aim  [A/D] Strafe  [M] Map  [E] Warp  [F] Dock  [TAB] Inv', {
-      fontSize: '12px', fontFamily: 'monospace', color: '#444444',
+      fontSize: '8px', fontFamily: FONT, color: '#444444',
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(501);
 
     // Version string (bottom-right, dim)
     this.versionText = this.add.text(0, 0, BUILD_VERSION + ' | ' + BUILD_DATE, {
-      fontSize: '10px', fontFamily: 'monospace', color: 'rgba(255,255,255,0.2)',
+      fontSize: '10px', fontFamily: FONT, color: 'rgba(255,255,255,0.2)',
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(501);
 
     // Prompt text with background for visibility
     this.promptText = this.add.text(0, 0, '', {
-      fontSize: '16px', fontFamily: 'monospace', color: '#00d4ff',
+      fontSize: '10px', fontFamily: FONT, color: '#00d4ff',
       backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 12, y: 6 },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(501).setVisible(false);
 
@@ -148,7 +150,7 @@ export default class FlightScene extends Phaser.Scene {
 
     // Bark system
     this.barkText = this.add.text(0, 0, '', {
-      fontSize: '16px', fontFamily: 'monospace', color: '#87CEEB',
+      fontSize: '10px', fontFamily: FONT, color: '#87CEEB',
       backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 12, y: 6 },
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(520).setVisible(false);
     this.barkTimer = null;
@@ -158,7 +160,7 @@ export default class FlightScene extends Phaser.Scene {
     this.transGfx = this.add.graphics().setScrollFactor(0);
     this.transContainer.add(this.transGfx);
     this.transText = this.add.text(0, 0, '', {
-      fontSize: '16px', fontFamily: 'monospace', color: '#33ff66',
+      fontSize: '10px', fontFamily: FONT, color: '#33ff66',
       padding: { x: 14, y: 8 },
     }).setOrigin(0.5, 0).setScrollFactor(0);
     this.transContainer.add(this.transText);
@@ -185,6 +187,9 @@ export default class FlightScene extends Phaser.Scene {
     const start = this.universe.find(s => s.region.key === 'CORE') || this.universe[0];
     this.startingSystemId = start.id;
     this.enterSystem(start.id);
+
+    // Fade in
+    this.cameras.main.fadeIn(500, 0, 0, 0);
 
     // Fire game_start cutscene
     this.lastActivityTime = Date.now();
@@ -351,18 +356,18 @@ export default class FlightScene extends Phaser.Scene {
 
       const label = isZion ? 'Zion' : p.type.name;
       this.labelTexts.push(this.add.text(p.x, p.y + r + 14, label, {
-        fontSize: '12px', fontFamily: 'monospace', color: isZion ? '#2ecc71' : '#aaa',
+        fontSize: '12px', fontFamily: FONT, color: isZion ? '#2ecc71' : '#aaa',
       }).setOrigin(0.5, 0).setDepth(22));
     }
     for (const s of this.stations) {
       this.labelTexts.push(this.add.text(s.x, s.y + s.size + 12, s.name, {
-        fontSize: '12px', fontFamily: 'monospace', color: '#00d4ff',
+        fontSize: '12px', fontFamily: FONT, color: '#00d4ff',
       }).setOrigin(0.5, 0).setDepth(22));
     }
     for (const ga of this.gates) {
       this.labelTexts.push(this.add.text(ga.x, ga.y + ga.size + 12,
         ga.targetName + (ga.isDungeon ? ' \u26A0' : ''), {
-        fontSize: '12px', fontFamily: 'monospace', color: ga.isDungeon ? '#ff00ff' : '#00d4ff',
+        fontSize: '12px', fontFamily: FONT, color: ga.isDungeon ? '#ff00ff' : '#00d4ff',
       }).setOrigin(0.5, 0).setDepth(22).setAlpha(0.7));
     }
   }
@@ -572,6 +577,24 @@ export default class FlightScene extends Phaser.Scene {
       this.sessionTriggers.add('fuel_warned');
       this.fireBark('fuel_below_20');
     }
+    // Out-of-fuel mechanic
+    if (this.player.fuel <= 0) {
+      if (!this.outOfFuel) {
+        this.outOfFuel = true;
+        this.outOfFuelTime = Date.now();
+        this.player.body.setMaxVelocity(PLAYER_DEFAULTS.maxSpeed * 0.3);
+        this.fireBark('fuel_at_zero');
+      }
+      // Extended bark after 10s
+      if (Date.now() - this.outOfFuelTime > 10000 && !this.sessionTriggers.has('fuel_zero_ext')) {
+        this.sessionTriggers.add('fuel_zero_ext');
+        this.fireBark('fuel_zero_extended');
+      }
+    } else if (this.outOfFuel) {
+      // Fuel restored (e.g., mined some)
+      this.outOfFuel = false;
+      this.player.body.setMaxVelocity(PLAYER_DEFAULTS.maxSpeed);
+    }
     if (this.player.hull < this.player.maxHull * 0.25 && !this.sessionTriggers.has('hull_warned')) {
       this.sessionTriggers.add('hull_warned');
       this.fireBark('hull_below_25');
@@ -628,8 +651,9 @@ export default class FlightScene extends Phaser.Scene {
       this.promptText.setText('[E] WARP \u2192 ' + gt.targetName + (gt.isDungeon ? ' \u26A0 DUNGEON' : ''))
         .setColor(gt.isDungeon ? '#ff00ff' : '#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
     } else if (this.nearStation) {
-      this.promptText.setText('[F] Dock at ' + this.nearStation.name)
-        .setColor('#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
+      const dockLabel = this.outOfFuel ? '[F] Emergency Dock — Free Fuel' : '[F] Dock at ' + this.nearStation.name;
+      this.promptText.setText(dockLabel)
+        .setColor(this.outOfFuel ? '#f1c40f' : '#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
     } else {
       this.promptText.setVisible(false);
     }
@@ -682,7 +706,7 @@ export default class FlightScene extends Phaser.Scene {
         const amt = 1 + Math.floor(Math.random() * 2);
         this.inventory.addItem(closest.resourceId, amt);
         const ft = this.add.text(closest.x, closest.y - 15, '+' + amt + ' ' + res.name, {
-          fontSize: '11px', fontFamily: 'monospace', color: res.tier.color, stroke: '#000', strokeThickness: 2,
+          fontSize: '11px', fontFamily: FONT, color: res.tier.color, stroke: '#000', strokeThickness: 2,
         }).setOrigin(0.5).setDepth(300);
         this.tweens.add({ targets: ft, y: closest.y - 45, alpha: 0, duration: 1200, onComplete: () => ft.destroy() });
       }
@@ -894,6 +918,10 @@ export default class FlightScene extends Phaser.Scene {
 
   tryDock() {
     if (!this.nearStation || this.invOpen) return;
+    // Emergency fuel refill
+    if (this.outOfFuel) {
+      this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + 25);
+    }
     const npc = this.nearStation.npc;
     if (!npc) return;
     this.dialogueActive = true;
@@ -1015,10 +1043,10 @@ export default class FlightScene extends Phaser.Scene {
     g.fillStyle(0x0a0a1a, 0.95); g.fillRect(ox, oy, tw, th);
     g.lineStyle(2, 0x00d4ff, 0.6); g.strokeRect(ox, oy, tw, th);
     this.invTexts.push(this.add.text(ox + tw / 2, oy + 10, 'INVENTORY', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#00d4ff', fontStyle: 'bold',
+      fontSize: '14px', fontFamily: FONT, color: '#00d4ff', fontStyle: 'bold',
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(601));
     this.invTexts.push(this.add.text(ox + tw - m, oy + 10, this.inventory.getUsedSlots() + '/' + this.inventory.maxSlots, {
-      fontSize: '11px', fontFamily: 'monospace', color: '#888',
+      fontSize: '11px', fontFamily: FONT, color: '#888',
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(601));
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
       const i = r * cols + c, sx = ox + m + c * (cs + pad), sy = oy + m + 24 + r * (cs + pad);
@@ -1031,11 +1059,11 @@ export default class FlightScene extends Phaser.Scene {
           g.lineStyle(1.5, rc, 0.8); g.strokeRect(sx, sy, cs, cs);
           g.fillStyle(rc, 0.6); g.fillRect(sx + 12, sy + 10, 24, 20);
           this.invTexts.push(this.add.text(sx + cs - 3, sy + cs - 3, '' + slot.count, {
-            fontSize: '9px', fontFamily: 'monospace', color: '#fff', stroke: '#000', strokeThickness: 2,
+            fontSize: '9px', fontFamily: FONT, color: '#fff', stroke: '#000', strokeThickness: 2,
           }).setOrigin(1, 1).setScrollFactor(0).setDepth(601));
           const nm = res.name.length > 7 ? res.name.substring(0, 6) + '.' : res.name;
           this.invTexts.push(this.add.text(sx + cs / 2, sy + cs - 3, nm, {
-            fontSize: '7px', fontFamily: 'monospace', color: '#aaa',
+            fontSize: '7px', fontFamily: FONT, color: '#aaa',
           }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(601));
         }
       } else { g.lineStyle(1, 0x333344, 0.4); g.strokeRect(sx, sy, cs, cs); }
@@ -1062,7 +1090,7 @@ export default class FlightScene extends Phaser.Scene {
       this.fireBark('near_dungeon_gate');
       return;
     }
-    if (this.player.fuel < 10) return;
+    if (this.player.fuel < 10 || this.outOfFuel) return;
     this.player.fuel = Math.max(0, this.player.fuel - 10);
     this.sound_mgr.playWarpWhoosh();
     this.sound_mgr.stopAll();

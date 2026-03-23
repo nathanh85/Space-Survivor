@@ -91,11 +91,11 @@ export default class GalaxyMapScene extends Phaser.Scene {
     this.gfx = this.add.graphics();
 
     this.add.text(W / 2, 24, '\u2B21 GALACTIC CHART', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#00d4ff', fontStyle: 'bold',
+      fontSize: '14px', fontFamily: '"Press Start 2P", monospace', color: '#00d4ff', fontStyle: 'bold',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
 
     this.add.text(W / 2, 42, '[M] Close   [Click] Warp to adjacent   [Drag] Pan', {
-      fontSize: '10px', fontFamily: 'monospace', color: '#555555',
+      fontSize: '10px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
 
     // Input
@@ -123,13 +123,17 @@ export default class GalaxyMapScene extends Phaser.Scene {
       this.isDragging = false;
     });
 
+    this.cameras.main.fadeIn(300, 0, 0, 0);
     this.input.keyboard.on('keydown-M', () => this.closeMap());
     this.input.keyboard.on('keydown-ESC', () => this.closeMap());
   }
 
   closeMap() {
-    this.scene.stop('GalaxyMapScene');
-    this.scene.resume('FlightScene');
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.stop('GalaxyMapScene');
+      this.scene.resume('FlightScene');
+    });
   }
 
   getSystemScreenPos(sys) {
@@ -161,18 +165,46 @@ export default class GalaxyMapScene extends Phaser.Scene {
     const g = this.gfx;
     g.clear();
 
-    // Draw hex outlines for revealed cells
+    // Draw hex outlines + region fills for revealed cells
     for (let r = 0; r < UNIVERSE_ROWS; r++) {
       for (let c = 0; c < UNIVERSE_COLS; c++) {
-        const key = `${c}_${r}`;
-        if (!this.fog.has(key)) continue;
         const hp = hexPosition(c, r);
         const sx = hp.x + this.mapOffset.x;
         const sy = hp.y + this.mapOffset.y;
         if (sx < -100 || sx > W + 100 || sy < -100 || sy > H + 100) continue;
-        drawHexOutline(g, sx, sy, HEX_SIZE * 0.95, 0x00c8ff, 0.04);
+
+        const isRevealed = this.fog.has(`${c}_${r}`);
+        // Region color fill (subtle)
+        const dist = Math.sqrt((c - UNIVERSE_COLS / 2) ** 2 + (r - UNIVERSE_ROWS / 2) ** 2);
+        let regionColor = 0x2ecc71;
+        if (dist >= 6) regionColor = 0x8e44ad;
+        else if (dist >= 4.5) regionColor = 0xe74c3c;
+        else if (dist >= 2.5) regionColor = 0xf39c12;
+
+        if (isRevealed) {
+          fillHex(g, sx, sy, HEX_SIZE * 0.9, regionColor, 0.04);
+          drawHexOutline(g, sx, sy, HEX_SIZE * 0.95, 0x00c8ff, 0.08);
+        } else {
+          drawHexOutline(g, sx, sy, HEX_SIZE * 0.95, 0xffffff, 0.03);
+        }
       }
     }
+
+    // Region labels (large, semi-transparent, positioned by region center)
+    const rcx = (UNIVERSE_COLS / 2) * HEX_W + this.mapOffset.x;
+    const rcy = (UNIVERSE_ROWS / 2) * (HEX_H * 0.75) + this.mapOffset.y;
+    if (!this._regionLabels) {
+      this._regionLabels = [
+        this.add.text(0, 0, 'CORE WORLDS', { fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#2ecc71' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
+        this.add.text(0, 0, 'FRONTIER', { fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#f39c12' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
+        this.add.text(0, 0, 'OUTER RIM', { fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#e74c3c' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
+        this.add.text(0, 0, 'THE RIFT', { fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#8e44ad' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
+      ];
+    }
+    this._regionLabels[0].setPosition(rcx, rcy - 50);
+    this._regionLabels[1].setPosition(rcx + 300, rcy + 50);
+    this._regionLabels[2].setPosition(rcx - 300, rcy + 200);
+    this._regionLabels[3].setPosition(rcx + 300, rcy + 300);
 
     // Connections
     for (const s of this.universe) {

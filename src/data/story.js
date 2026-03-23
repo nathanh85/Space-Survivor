@@ -102,6 +102,22 @@ export const STORY_BEATS = [
     lines: ["We're runnin' on fumes, Pax. Maybe don't warp anywhere far?"]
   },
   {
+    id: 'bark_no_fuel',
+    type: 'bark',
+    trigger: 'fuel_at_zero',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["We're bone dry, Pax! No fuel means no warp and barely any thrust."]
+  },
+  {
+    id: 'bark_no_fuel_2',
+    type: 'bark',
+    trigger: 'fuel_zero_extended',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Maybe we should signal for help... if anyone's even listenin'."]
+  },
+  {
     id: 'bark_low_hull',
     type: 'bark',
     trigger: 'hull_below_25',

@@ -62,7 +62,7 @@ export default class CutsceneScene extends Phaser.Scene {
       g.strokeRect(W * 0.1, 40, W * 0.8, H * 0.5);
 
       this.add.text(W / 2, H * 0.3, '[Cutscene Art]', {
-        fontSize: '16px', fontFamily: 'monospace', color: '#333344',
+        fontSize: '16px', fontFamily: '"Press Start 2P", monospace', color: '#333344',
       }).setOrigin(0.5);
     }
 
@@ -77,22 +77,23 @@ export default class CutsceneScene extends Phaser.Scene {
     // Speaker name
     const speakerColor = getSpeakerColor(this.beat.speaker);
     this.add.text(30, boxY + 12, (this.beat.speaker || '').toUpperCase(), {
-      fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', color: speakerColor,
+      fontSize: '13px', fontFamily: '"Press Start 2P", monospace', fontStyle: 'bold', color: speakerColor,
     });
 
     // Dialogue text
     this.dialogueText = this.add.text(30, boxY + 34, '', {
-      fontSize: '12px', fontFamily: 'monospace', color: '#cccccc',
+      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#cccccc',
       wordWrap: { width: W - 60 },
       lineSpacing: 4,
     });
 
     // Advance hint
     this.advanceHint = this.add.text(W - 16, H - 8, '[SPACE / Click]', {
-      fontSize: '9px', fontFamily: 'monospace', color: '#666666',
+      fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#666666',
     }).setOrigin(1, 1).setVisible(false);
 
-    // Start first line
+    // Fade in + start first line
+    this.cameras.main.fadeIn(400, 0, 0, 0);
     this.showLine();
 
     // Input
@@ -138,14 +139,17 @@ export default class CutsceneScene extends Phaser.Scene {
   }
 
   closeCutscene() {
-    this.scene.stop('CutsceneScene');
-    this.scene.resume('FlightScene');
+    this.cameras.main.fadeOut(400, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.stop('CutsceneScene');
+      this.scene.resume('FlightScene');
 
-    if (this.beat && this.beat.next) {
-      const flightScene = this.scene.get('FlightScene');
-      if (flightScene && flightScene.triggerStoryBeat) {
-        flightScene.triggerStoryBeat(this.beat.next);
+      if (this.beat && this.beat.next) {
+        const flightScene = this.scene.get('FlightScene');
+        if (flightScene && flightScene.triggerStoryBeat) {
+          flightScene.triggerStoryBeat(this.beat.next);
+        }
       }
-    }
+    });
   }
 }

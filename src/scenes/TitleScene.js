@@ -23,11 +23,11 @@ export default class TitleScene extends Phaser.Scene {
 
     // Title
     this.add.text(W / 2, H * 0.30, 'P.E.S.T.S.', {
-      fontSize: '42px', fontFamily: 'monospace', color: '#00d4ff', fontStyle: 'bold',
+      fontSize: '28px', fontFamily: '"Press Start 2P", monospace', color: '#00d4ff',
     }).setOrigin(0.5, 0.5);
 
     this.add.text(W / 2, H * 0.38, 'A Space Western', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#f39c12',
+      fontSize: '10px', fontFamily: '"Press Start 2P", monospace', color: '#f39c12',
     }).setOrigin(0.5, 0.5);
 
     // Decorative ship
@@ -51,7 +51,7 @@ export default class TitleScene extends Phaser.Scene {
     btn.strokeRect(W / 2 - 100, btnY - 18, 200, 36);
 
     const startText = this.add.text(W / 2, btnY, 'START GAME', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#00d4ff', fontStyle: 'bold',
+      fontSize: '14px', fontFamily: '"Press Start 2P", monospace', color: '#00d4ff', fontStyle: 'bold',
     }).setOrigin(0.5);
 
     // Make button interactive
@@ -78,11 +78,11 @@ export default class TitleScene extends Phaser.Scene {
 
     // Version / credits
     this.add.text(W / 2, H * 0.75, 'WASD to fly  |  Mouse to aim  |  M for map', {
-      fontSize: '10px', fontFamily: 'monospace', color: '#555555',
+      fontSize: '10px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
     }).setOrigin(0.5);
 
-    this.add.text(W / 2, H - 20, 'v0.4.1 — P.E.S.T.S.', {
-      fontSize: '9px', fontFamily: 'monospace', color: '#333333',
+    this.add.text(W / 2, H - 20, 'v0.4.2 — P.E.S.T.S.', {
+      fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#333333',
     }).setOrigin(0.5);
 
     // Pulse animation on start text
@@ -93,6 +93,9 @@ export default class TitleScene extends Phaser.Scene {
   }
 
   startGame() {
-    this.scene.start('IntroScene');
+    this.cameras.main.fadeOut(500, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('IntroScene');
+    });
   }
 }

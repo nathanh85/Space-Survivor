@@ -16,10 +16,11 @@ export default class HubScene extends Phaser.Scene {
   create() {
     const { width: W, height: H } = this.cameras.main;
     this.cameras.main.setBackgroundColor('#0a0a0a');
+    this.cameras.main.fadeIn(400, 0, 0, 0);
 
     // Header
     this.add.text(W / 2, 40, 'THE OUTPOST \u2014 Planet Zion', {
-      fontSize: '20px', fontFamily: 'monospace', fontStyle: 'bold', color: '#2ecc71',
+      fontSize: '20px', fontFamily: '"Press Start 2P", monospace', fontStyle: 'bold', color: '#2ecc71',
     }).setOrigin(0.5);
 
     // Divider line
@@ -32,12 +33,12 @@ export default class HubScene extends Phaser.Scene {
 
     // Placeholder description
     this.add.text(W / 2, H / 2 - 40, "Home sweet... well, it ain't much. But it's ours.", {
-      fontSize: '12px', fontFamily: 'monospace', color: '#87CEEB',
+      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#87CEEB',
       fontStyle: 'italic',
     }).setOrigin(0.5);
 
     this.add.text(W / 2, H / 2, '[The Outpost — Coming Soon]', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#444444',
+      fontSize: '14px', fontFamily: '"Press Start 2P", monospace', color: '#444444',
     }).setOrigin(0.5);
 
     // Launch button
@@ -49,7 +50,7 @@ export default class HubScene extends Phaser.Scene {
     btn.strokeRect(W / 2 - 80, btnY, 160, 40);
 
     const btnText = this.add.text(W / 2, btnY + 20, 'LAUNCH', {
-      fontSize: '14px', fontFamily: 'monospace', fontStyle: 'bold', color: '#2ecc71',
+      fontSize: '14px', fontFamily: '"Press Start 2P", monospace', fontStyle: 'bold', color: '#2ecc71',
     }).setOrigin(0.5);
 
     // Make button interactive
@@ -84,7 +85,7 @@ export default class HubScene extends Phaser.Scene {
   showPepperBark(text) {
     const W = this.cameras.main.width;
     const bark = this.add.text(W / 2, 90, 'Pepper: ' + text, {
-      fontSize: '12px', fontFamily: 'monospace', color: '#87CEEB',
+      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#87CEEB',
       backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 12, y: 6 },
     }).setOrigin(0.5, 0).setAlpha(0);
     this.tweens.add({ targets: bark, alpha: 1, duration: 300 });
@@ -94,12 +95,15 @@ export default class HubScene extends Phaser.Scene {
   }
 
   launch() {
-    this.scene.stop('HubScene');
-    const flightScene = this.scene.get('FlightScene');
-    if (flightScene && flightScene.returnFromHub) {
-      flightScene.returnFromHub();
-    } else {
-      this.scene.resume('FlightScene');
-    }
+    this.cameras.main.fadeOut(400, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.stop('HubScene');
+      const flightScene = this.scene.get('FlightScene');
+      if (flightScene && flightScene.returnFromHub) {
+        flightScene.returnFromHub();
+      } else {
+        this.scene.resume('FlightScene');
+      }
+    });
   }
 }
