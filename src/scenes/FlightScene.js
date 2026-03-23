@@ -14,6 +14,8 @@ import { NPCS } from '../data/npcs.js';
 import DialogueUI from '../ui/DialogueUI.js';
 import SoundManager from '../systems/SoundManager.js';
 import TextQueue from '../systems/TextQueue.js';
+import WeaponSystem from '../systems/WeaponSystem.js';
+import EnemyManager from '../systems/EnemyManager.js';
 
 export default class FlightScene extends Phaser.Scene {
   constructor() {
@@ -59,6 +61,15 @@ export default class FlightScene extends Phaser.Scene {
     this.textQueue = new TextQueue();
     this.textQueue.onShowCallback = (item) => this._showQueueItem(item);
     this.textQueue.onDismissCallback = (item) => this._dismissQueueItem(item);
+
+    // Combat systems
+    this.weaponSystem = new WeaponSystem(this);
+    this.enemyManager = new EnemyManager(this);
+    this.shieldRegenPaused = 0; // timestamp when regen was paused
+    this.lastCombatBarkTime = 0;
+    this.combatHullWarned = false;
+    this.combatShieldsWarned = false;
+    this.playerDead = false;
 
     // Idle bark timer
     this.lastActivityTime = 0;
@@ -136,6 +147,17 @@ export default class FlightScene extends Phaser.Scene {
       fontSize: '10px', fontFamily: FONT, color: 'rgba(255,255,255,0.2)',
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(501);
 
+    // Combat HUD
+    this.weaponLabel = this.add.text(10, 100, '', {
+      fontSize: '8px', fontFamily: FONT, color: '#00d4ff',
+    }).setScrollFactor(0).setDepth(501);
+    this.hostileLabel = this.add.text(0, 0, '', {
+      fontSize: '8px', fontFamily: FONT, color: '#e74c3c',
+    }).setScrollFactor(0).setDepth(501).setVisible(false);
+    this.killLabel = this.add.text(0, 0, '', {
+      fontSize: '8px', fontFamily: FONT, color: 'rgba(255,255,255,0.3)',
+    }).setScrollFactor(0).setDepth(501);
+
     // Prompt text with background for visibility
     this.promptText = this.add.text(0, 0, '', {
       fontSize: '10px', fontFamily: FONT, color: '#00d4ff',
@@ -189,6 +211,9 @@ export default class FlightScene extends Phaser.Scene {
     this.startingSystemId = start.id;
     this.enterSystem(start.id);
 
+    // Combat collision setup
+    this.setupCombatCollisions();
+
     // Fade in
     this.cameras.main.fadeIn(500, 0, 0, 0);
 
@@ -210,6 +235,8 @@ export default class FlightScene extends Phaser.Scene {
     this.miningGfx.clear();
     this.miningAsteroid = null;
     this.perSystemTriggers.clear();
+    this.enemyManager.clearAll();
+    this._lootItems = [];
 
     if (!this.systemCache[sysId]) {
       this.systemCache[sysId] = generateSystem(sysData, this.universe);
@@ -669,6 +696,10 @@ export default class FlightScene extends Phaser.Scene {
       this.drawStar(this.currentSystem.star, time);
     }
 
+    // Combat
+    this.updateCombat(time, delta);
+    this.updateLootPickup();
+
     // Animated entities
     this.drawAnimatedEntities(time);
 
@@ -969,6 +1000,324 @@ export default class FlightScene extends Phaser.Scene {
     }
   }
 
+  // ========== COMBAT ==========
+
+  setupCombatCollisions() {
+    // Player projectiles vs enemy bodies — checked each frame in updateCombat
+    // Enemy projectiles vs player — checked each frame in updateCombat
+  }
+
+  updateCombat(time, delta) {
+    if (this.playerDead) return;
+    const dt = delta / 1000;
+    const danger = this.currentSystem ? this.currentSystem.data.danger : 1;
+
+    // Update enemy manager
+    const combatCleared = this.enemyManager.update(time, delta, this.player.x, this.player.y, danger);
+    if (combatCleared) {
+      this.fireBark('all_enemies_cleared');
+      this.combatHullWarned = false;
+      this.combatShieldsWarned = false;
+    }
+
+    // First enemy spotted bark
+    if (this.enemyManager.getEnemyCount() > 0 && !this.firedTriggers.has('first_enemy_spotted')) {
+      this.firedTriggers.add('first_enemy_spotted');
+      this.fireBark('first_enemy_spotted');
+    }
+
+    // Fire weapon on left click (not mining, not dialogue)
+    if (this.input.activePointer.isDown && !this.dialogueActive && !this.invOpen && !this.dialogueUI.isOpen) {
+      // Only fire if not near a mineable asteroid (prefer mining over shooting)
+      if (!this.miningAsteroid) {
+        const proj = this.weaponSystem.fire(time, this.player.x, this.player.y, this.player.shipAngle);
+        if (proj) {
+          this.sound_mgr.playLaser();
+          this.lastActivityTime = Date.now();
+        }
+      }
+    }
+
+    // Check player projectiles vs enemies
+    for (const enemy of this.enemyManager.enemies) {
+      if (!enemy.alive) continue;
+      this.weaponSystem.projectiles.getChildren().forEach(proj => {
+        if (!proj || !proj.active || !enemy.body || !enemy.body.active) return;
+        const dist = Phaser.Math.Distance.Between(proj.x, proj.y, enemy.x, enemy.y);
+        if (dist < 15) {
+          const dmg = proj._damage || 15;
+          enemy.takeDamage(dmg);
+          proj.destroy();
+
+          // Damage number popup
+          const ft = this.add.text(enemy.x, enemy.y - 15, '-' + dmg, {
+            fontSize: '8px', fontFamily: FONT, color: '#ffffff', stroke: '#000', strokeThickness: 2,
+          }).setOrigin(0.5).setDepth(300);
+          this.tweens.add({ targets: ft, y: enemy.y - 40, alpha: 0, duration: 800, onComplete: () => ft.destroy() });
+
+          // Check if enemy died
+          if (!enemy.alive) {
+            this.handleEnemyKill(enemy);
+          }
+        }
+      });
+    }
+
+    // Check enemy projectiles vs player
+    this.enemyManager.enemyProjectiles.getChildren().forEach(proj => {
+      if (!proj || !proj.active) return;
+      const dist = Phaser.Math.Distance.Between(proj.x, proj.y, this.player.x, this.player.y);
+      if (dist < 20) {
+        const dmg = proj._damage || 5;
+        proj.destroy();
+        this.playerTakeDamage(dmg);
+      }
+    });
+
+    // Combat hull warning
+    if (this.player.hull < this.player.maxHull * 0.25 && !this.combatHullWarned && this.enemyManager.getEnemyCount() > 0) {
+      this.combatHullWarned = true;
+      this.fireBark('hull_below_25_combat');
+    }
+
+    // Shield regen pause
+    if (this.shieldRegenPaused > 0 && Date.now() > this.shieldRegenPaused) {
+      this.shieldRegenPaused = 0;
+    }
+  }
+
+  handleEnemyKill(enemy) {
+    this.sound_mgr.playEnemyDeath();
+    this.enemyManager.killCount++;
+
+    // First kill bark
+    if (!this.firedTriggers.has('first_enemy_kill')) {
+      this.firedTriggers.add('first_enemy_kill');
+      this.fireBark('first_enemy_kill');
+    } else if (Date.now() - this.lastCombatBarkTime > 5000) {
+      // Random combat bark with cooldown
+      this.lastCombatBarkTime = Date.now();
+      const barks = getBarksByTrigger('enemy_destroyed');
+      if (barks.length > 0) {
+        const bark = barks[Math.floor(Math.random() * barks.length)];
+        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: ' + bark.lines[0] } });
+      }
+    }
+
+    // XP
+    this.player.xp += enemy.xp || 10;
+    const xpText = this.add.text(enemy.x, enemy.y - 20, '+' + (enemy.xp || 10) + ' XP', {
+      fontSize: '8px', fontFamily: FONT, color: '#bb6bd9', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(300);
+    this.tweens.add({ targets: xpText, y: enemy.y - 50, alpha: 0, duration: 1000, onComplete: () => xpText.destroy() });
+
+    // Level up check
+    if (this.player.xp >= this.player.xpNext) {
+      this.player.level++;
+      this.player.xp -= this.player.xpNext;
+      this.player.xpNext = Math.floor(this.player.xpNext * 1.5);
+      this.fireBark('level_up');
+    }
+
+    // Loot drop
+    this.spawnLoot(enemy.x, enemy.y, enemy.loot);
+  }
+
+  spawnLoot(x, y, loot) {
+    if (!loot) return;
+
+    // Credits (always)
+    const credits = loot.credits[0] + Math.floor(Math.random() * (loot.credits[1] - loot.credits[0]));
+    this.spawnLootItem(x + (Math.random() - 0.5) * 20, y + (Math.random() - 0.5) * 20,
+      'credits', credits, 0xf1c40f);
+
+    // Resource (40% chance)
+    if (Math.random() < (loot.resourceChance || 0.4) && loot.resources) {
+      const resId = loot.resources[Math.floor(Math.random() * loot.resources.length)];
+      this.spawnLootItem(x + (Math.random() - 0.5) * 30, y + (Math.random() - 0.5) * 30,
+        resId, 1, 0x2ecc71);
+    }
+  }
+
+  spawnLootItem(x, y, type, amount, color) {
+    const item = this.add.rectangle(x, y, 6, 6, color).setDepth(150);
+    item._lootType = type;
+    item._lootAmount = amount;
+
+    // Bob animation
+    this.tweens.add({
+      targets: item, y: y - 5, yoyo: true, repeat: -1, duration: 600, ease: 'Sine.easeInOut',
+    });
+
+    // Auto-collect check each frame (stored for update loop)
+    if (!this._lootItems) this._lootItems = [];
+    this._lootItems.push(item);
+
+    // Despawn after 30s
+    this.time.delayedCall(30000, () => {
+      if (item && item.active) {
+        item.destroy();
+        this._lootItems = this._lootItems.filter(i => i !== item);
+      }
+    });
+  }
+
+  updateLootPickup() {
+    if (!this._lootItems) return;
+    for (let i = this._lootItems.length - 1; i >= 0; i--) {
+      const item = this._lootItems[i];
+      if (!item || !item.active) { this._lootItems.splice(i, 1); continue; }
+
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, item.x, item.y);
+      if (dist < 50) {
+        this.sound_mgr.playPickup();
+        let label = '';
+        if (item._lootType === 'credits') {
+          this.player.credits += item._lootAmount;
+          label = '+' + item._lootAmount + ' Credits';
+        } else {
+          this.inventory.addItem(item._lootType, item._lootAmount);
+          const res = RESOURCES[item._lootType];
+          label = '+' + item._lootAmount + ' ' + (res ? res.name : item._lootType);
+        }
+
+        const ft = this.add.text(item.x, item.y - 10, label, {
+          fontSize: '8px', fontFamily: FONT, color: '#f1c40f', stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(300);
+        this.tweens.add({ targets: ft, y: item.y - 35, alpha: 0, duration: 800, onComplete: () => ft.destroy() });
+
+        item.destroy();
+        this._lootItems.splice(i, 1);
+      }
+    }
+  }
+
+  playerTakeDamage(amount) {
+    if (this.playerDead) return;
+    this.sound_mgr.playPlayerHit();
+
+    // Pause shield regen for 3s
+    this.shieldRegenPaused = Date.now() + 3000;
+
+    if (this.player.shield > 0) {
+      this.player.shield -= amount;
+      if (this.player.shield < 0) {
+        // Overflow to hull
+        this.player.hull += this.player.shield;
+        this.player.shield = 0;
+        if (!this.combatShieldsWarned) {
+          this.combatShieldsWarned = true;
+          this.fireBark('shields_depleted');
+        }
+      }
+      // Brief blue flash
+      this.cameras.main.flash(80, 0, 100, 255, false);
+    } else {
+      this.player.hull -= amount;
+      // Brief red flash + shake
+      this.cameras.main.flash(80, 255, 50, 50, false);
+      this.cameras.main.shake(100, 0.003);
+      // Hull damage bark (once per 10s)
+      if (Date.now() - this.lastCombatBarkTime > 10000) {
+        this.lastCombatBarkTime = Date.now();
+        this.fireBark('player_hit_hull');
+      }
+    }
+
+    if (this.player.hull <= 0) {
+      this.player.hull = 0;
+      this.handlePlayerDeath();
+    }
+  }
+
+  handlePlayerDeath() {
+    this.playerDead = true;
+    this.sound_mgr.stopAll();
+    this.enemyManager.clearAll();
+
+    // Particle burst
+    for (let i = 0; i < 15; i++) {
+      const px = this.player.x + (Math.random() - 0.5) * 30;
+      const py = this.player.y + (Math.random() - 0.5) * 30;
+      const c = [0xf39c12, 0xe74c3c, 0xffffff][Math.floor(Math.random() * 3)];
+      const p = this.add.rectangle(px, py, 3, 3, c).setDepth(200);
+      this.tweens.add({
+        targets: p, x: px + (Math.random() - 0.5) * 80, y: py + (Math.random() - 0.5) * 80,
+        alpha: 0, duration: 600, onComplete: () => p.destroy(),
+      });
+    }
+
+    this.player.setVisible(false);
+
+    // Fade to black after 1s
+    this.time.delayedCall(1000, () => {
+      this.cameras.main.fadeOut(800, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.showDeathScreen();
+      });
+    });
+  }
+
+  showDeathScreen() {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+
+    // Black overlay
+    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000).setScrollFactor(0).setDepth(900);
+
+    const t1 = this.add.text(W / 2, H * 0.35, "M.O.T.H.E.R.'S LAW ENFORCEMENT\nHAS PROCESSED YOUR VESSEL", {
+      fontSize: '10px', fontFamily: FONT, color: '#e74c3c',
+      align: 'center',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
+
+    const t2 = this.add.text(W / 2, H * 0.55, "Released at nearest station.\nTry not to let it happen again.", {
+      fontSize: '8px', fontFamily: FONT, color: '#888888',
+      align: 'center',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
+
+    this.tweens.add({ targets: t1, alpha: 1, duration: 800 });
+    this.time.delayedCall(1000, () => {
+      this.tweens.add({ targets: t2, alpha: 1, duration: 800 });
+    });
+
+    // Respawn after 4s
+    this.time.delayedCall(4000, () => {
+      overlay.destroy();
+      t1.destroy();
+      t2.destroy();
+      this.respawnPlayer();
+    });
+  }
+
+  respawnPlayer() {
+    // Penalty: lose 25% credits, hull 50%, fuel 50%
+    this.player.credits = Math.floor(this.player.credits * 0.75);
+    this.player.hull = this.player.maxHull * 0.5;
+    this.player.shield = this.player.maxShield;
+    this.player.fuel = this.player.maxFuel * 0.5;
+    this.playerDead = false;
+    this.player.setVisible(true);
+    this.combatHullWarned = false;
+    this.combatShieldsWarned = false;
+
+    // Move to nearest station or hub
+    const zion = this.planets.find(p => p.isHub);
+    if (zion) {
+      this.player.setPosition(zion.x, zion.y + 100);
+    } else if (this.stations.length > 0) {
+      const st = this.stations[0];
+      this.player.setPosition(st.x, st.y + 50);
+    }
+    if (this.player.body) this.player.body.setVelocity(0, 0);
+
+    this.cameras.main.fadeIn(800, 0, 0, 0);
+    this.time.delayedCall(500, () => {
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: "Pepper: Well... that happened. At least they didn't keep us."
+      }});
+    });
+  }
+
   // ========== NPC DOCKING / HUB LANDING ==========
 
   tryDockOrLand() {
@@ -1050,6 +1399,16 @@ export default class FlightScene extends Phaser.Scene {
       .setPosition(14, iy + 34).setColor(DANGER_COLORS[sd.danger] || '#e74c3c');
     this.controlsText.setPosition(W - 10, H - 10);
     this.versionText.setPosition(W - 10, H - 22);
+
+    // Combat HUD
+    this.weaponLabel.setText('LASER  \u221E').setPosition(10, 102);
+    const hostiles = this.enemyManager.getEnemyCount();
+    if (hostiles > 0) {
+      this.hostileLabel.setText('HOSTILES: ' + hostiles).setPosition(W - 10, 140).setOrigin(1, 0).setVisible(true);
+    } else {
+      this.hostileLabel.setVisible(false);
+    }
+    this.killLabel.setText('KILLS: ' + this.enemyManager.killCount).setPosition(W - 10, H - 34).setOrigin(1, 1);
   }
 
   // ========== MINIMAP ==========

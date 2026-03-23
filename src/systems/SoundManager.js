@@ -143,6 +143,26 @@ export default class SoundManager {
     osc.stop(this.ctx.currentTime + 0.015);
   }
 
+  playLaser() {
+    this._playTone(1200, 0.05, 'sine', 0.08);
+    this._playTone(900, 0.03, 'square', 0.04);
+  }
+
+  playEnemyDeath() {
+    this._playNoise(0.15, 0.08);
+    this._playTone(200, 0.2, 'sine', 0.06);
+  }
+
+  playPickup() {
+    this._playTone(800, 0.08, 'sine', 0.08);
+    setTimeout(() => this._playTone(1200, 0.08, 'sine', 0.08), 60);
+  }
+
+  playPlayerHit() {
+    this._playNoise(0.08, 0.06);
+    this._playTone(150, 0.15, 'square', 0.05);
+  }
+
   playMenuClick() {
     this._playTone(1000, 0.02, 'square', 0.06);
   }

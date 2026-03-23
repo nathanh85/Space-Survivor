@@ -244,6 +244,80 @@ export const STORY_BEATS = [
     speaker: 'pepper',
     portrait: null,
     lines: ["We're burnin' daylight! ...Well, starlight. Same thing out here."]
+  },
+
+  // === COMBAT BARKS ===
+  {
+    id: 'bark_enemy_destroyed',
+    type: 'bark',
+    trigger: 'enemy_destroyed',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Got 'em! One less Tin Badge to worry about."]
+  },
+  {
+    id: 'bark_enemy_destroyed_2',
+    type: 'bark',
+    trigger: 'enemy_destroyed',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["That's what you get for messin' with the Zion kids!"]
+  },
+  {
+    id: 'bark_player_hit',
+    type: 'bark',
+    trigger: 'player_hit',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["We're hit! Shields are takin' a beatin'!"]
+  },
+  {
+    id: 'bark_player_hit_hull',
+    type: 'bark',
+    trigger: 'player_hit_hull',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["That one got through to the hull, Pax! Be careful!"]
+  },
+  {
+    id: 'bark_shields_down',
+    type: 'bark',
+    trigger: 'shields_depleted',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Shields are down! We're flyin' naked out here!"]
+  },
+  {
+    id: 'bark_combat_clear',
+    type: 'bark',
+    trigger: 'all_enemies_cleared',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["All clear! ...For now. Let's not stick around."]
+  },
+  {
+    id: 'bark_low_hull_combat',
+    type: 'bark',
+    trigger: 'hull_below_25_combat',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Pax, we gotta get outta here! The Dustkicker can't take much more!"]
+  },
+  {
+    id: 'bark_first_kill',
+    type: 'bark',
+    trigger: 'first_enemy_kill',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["We did it! We actually blew up a Tin Badge! ...Is it wrong that felt kinda good?"]
+  },
+  {
+    id: 'bark_level_up',
+    type: 'bark',
+    trigger: 'level_up',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Level up, Pax! We're gettin' stronger!"]
   }
 ];
 

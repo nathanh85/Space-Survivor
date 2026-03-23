@@ -100,8 +100,10 @@ export default class Player extends Phaser.GameObjects.Container {
       this.drawShip(false);
     }
 
-    // Shield regen
-    if (this.shield < this.maxShield) {
+    // Shield regen (paused during combat damage via shieldRegenPaused)
+    const scene = this.scene;
+    const regenPaused = scene.shieldRegenPaused && Date.now() < scene.shieldRegenPaused;
+    if (this.shield < this.maxShield && !regenPaused) {
       this.shield = Math.min(this.maxShield, this.shield + 0.015);
     }
   }
