@@ -206,9 +206,18 @@ export default class DialogueUI {
     if (!this.isOpen || !this.currentBeat) return;
 
     if (this.displayedChars < this.fullLineText.length) {
+      const prevChars = Math.floor(this.displayedChars);
       this.displayedChars += CHARS_PER_SEC * (delta / 1000);
       const chars = Math.min(Math.floor(this.displayedChars), this.fullLineText.length);
       this.dialogueText.setText(this.fullLineText.substring(0, chars));
+
+      // Typewriter tick on each new visible character (skip spaces/punctuation)
+      if (chars > prevChars && this.scene.sound_mgr) {
+        const newChar = this.fullLineText[chars - 1];
+        if (newChar && /[a-zA-Z0-9]/.test(newChar)) {
+          this.scene.sound_mgr.playTypewriterTick(this.currentBeat.speaker);
+        }
+      }
 
       if (chars >= this.fullLineText.length) {
         this.advanceHint.setVisible(true);

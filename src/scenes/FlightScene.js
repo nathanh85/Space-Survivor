@@ -53,6 +53,7 @@ export default class FlightScene extends Phaser.Scene {
     this.enteredFrontier = false;
     this.outOfFuel = false;
     this.outOfFuelTime = 0;
+    this._starWarned = false;
 
     // Text queue (barks, transmissions, dialogues — one at a time)
     this.textQueue = new TextQueue();
@@ -310,13 +311,44 @@ export default class FlightScene extends Phaser.Scene {
     }
   }
 
-  drawStar(star) {
+  drawStar(star, time) {
     const g = this.starLayer; g.clear();
     const c = Phaser.Display.Color.HexStringToColor(star.color).color;
-    g.fillStyle(c, 0.06); g.fillCircle(star.x, star.y, star.radius * 3);
-    g.fillStyle(c, 0.12); g.fillCircle(star.x, star.y, star.radius * 2);
-    g.fillStyle(0xffffff); g.fillCircle(star.x, star.y, star.radius * 0.4);
-    g.fillStyle(c, 0.9); g.fillCircle(star.x, star.y, star.radius);
+    const t = time || 0;
+    const pulse = 1 + Math.sin(t * 0.002) * 0.05;
+    const r = star.radius;
+
+    // 1. Outer corona (pulsing)
+    g.fillStyle(c, 0.04);
+    g.fillCircle(star.x, star.y, r * 3.5 * pulse);
+
+    // 2. Inner corona
+    g.fillStyle(c, 0.1);
+    g.fillCircle(star.x, star.y, r * 2.2);
+
+    // 3. Star body
+    g.fillStyle(c, 0.8);
+    g.fillCircle(star.x, star.y, r);
+
+    // 4. Hot core
+    g.fillStyle(0xffffff, 0.6);
+    g.fillCircle(star.x, star.y, r * 0.5);
+
+    // 5. Bright center
+    g.fillStyle(0xffffff, 0.9);
+    g.fillCircle(star.x, star.y, r * 0.15);
+
+    // 6. Corona rays (slowly rotating)
+    g.lineStyle(1, c, 0.08);
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + t * 0.0005;
+      const r1 = r * 1.2;
+      const r2 = r * 2.8 * pulse;
+      g.beginPath();
+      g.moveTo(star.x + Math.cos(angle) * r1, star.y + Math.sin(angle) * r1);
+      g.lineTo(star.x + Math.cos(angle) * r2, star.y + Math.sin(angle) * r2);
+      g.strokePath();
+    }
   }
 
   drawOrbits(sys) {
@@ -607,8 +639,35 @@ export default class FlightScene extends Phaser.Scene {
     // Idle barks
     this.checkIdleBark();
 
+    // Star hazard zone
+    if (this.currentSystem) {
+      const star = this.currentSystem.star;
+      const distToStar = Phaser.Math.Distance.Between(this.player.x, this.player.y, star.x, star.y);
+
+      // Warning zone (1.8x radius)
+      if (distToStar < star.radius * 1.8) {
+        if (!this._starWarned) {
+          this._starWarned = true;
+          this.fireBark('near_star');
+        }
+      } else {
+        this._starWarned = false;
+      }
+
+      // Damage zone (1.2x radius)
+      if (distToStar < star.radius * 1.2) {
+        this.player.hull -= 0.5 * dt * 60; // ~30 dmg/sec
+        if (this.player.hull < 0) this.player.hull = 0;
+      }
+    }
+
     // Transmission typewriter
     this.updateTransmissionTypewriter(delta);
+
+    // Animated star (pulsing corona)
+    if (this.currentSystem) {
+      this.drawStar(this.currentSystem.star, time);
+    }
 
     // Animated entities
     this.drawAnimatedEntities(time);
@@ -849,8 +908,17 @@ export default class FlightScene extends Phaser.Scene {
     if (!this.transCurrentBeat || this.transTypewriterDone) return;
 
     const TRANS_CHARS_PER_SEC = 25;
+    const prevChars = Math.floor(this.transTypewriterChars);
     this.transTypewriterChars += TRANS_CHARS_PER_SEC * (delta / 1000);
     const chars = Math.min(Math.floor(this.transTypewriterChars), this.transFullLine.length);
+
+    // Typewriter tick
+    if (chars > prevChars) {
+      const newChar = this.transFullLine[chars - 1];
+      if (newChar && /[a-zA-Z0-9]/.test(newChar)) {
+        this.sound_mgr.playTypewriterTick(this.transCurrentBeat.speaker);
+      }
+    }
     const W = this.cameras.main.width;
     this.transText.setText(this.transSpeakerLabel + '\n' + this.transFullLine.substring(0, chars));
     this.transText.setPosition(W / 2, 40);

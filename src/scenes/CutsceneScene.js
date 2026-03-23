@@ -128,9 +128,21 @@ export default class CutsceneScene extends Phaser.Scene {
   update(time, delta) {
     if (this.lineComplete) return;
 
+    const prevChars = Math.floor(this.displayedChars);
     this.displayedChars += CHARS_PER_SEC * (delta / 1000);
     const chars = Math.min(Math.floor(this.displayedChars), this.fullLineText.length);
     this.dialogueText.setText(this.fullLineText.substring(0, chars));
+
+    // Typewriter tick
+    if (chars > prevChars) {
+      const newChar = this.fullLineText[chars - 1];
+      if (newChar && /[a-zA-Z0-9]/.test(newChar)) {
+        const flightScene = this.scene.get('FlightScene');
+        if (flightScene && flightScene.sound_mgr) {
+          flightScene.sound_mgr.playTypewriterTick(this.beat.speaker);
+        }
+      }
+    }
 
     if (chars >= this.fullLineText.length) {
       this.lineComplete = true;

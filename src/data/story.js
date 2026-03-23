@@ -198,6 +198,14 @@ export const STORY_BEATS = [
     lines: ["Yeehaw! Nice shootin', Pax!"]
   },
   {
+    id: 'bark_star_warning',
+    type: 'bark',
+    trigger: 'near_star',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Pax! We're gettin' way too close to that star! Pull back!"]
+  },
+  {
     id: 'bark_dungeon_entry',
     type: 'bark',
     trigger: 'near_dungeon_gate',

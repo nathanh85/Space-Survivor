@@ -23,7 +23,7 @@ export default class TitleScene extends Phaser.Scene {
 
     // Title
     this.add.text(W / 2, H * 0.30, 'P.E.S.T.S.', {
-      fontSize: '28px', fontFamily: '"Press Start 2P", monospace', color: '#00d4ff',
+      fontSize: '48px', fontFamily: '"Rye", "Press Start 2P", monospace', color: '#00d4ff',
     }).setOrigin(0.5, 0.5);
 
     this.add.text(W / 2, H * 0.38, 'A Space Western', {
@@ -81,7 +81,7 @@ export default class TitleScene extends Phaser.Scene {
       fontSize: '10px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
     }).setOrigin(0.5);
 
-    this.add.text(W / 2, H - 20, 'v0.4.2 — P.E.S.T.S.', {
+    this.add.text(W / 2, H - 20, 'v0.4.3 — P.E.S.T.S.', {
       fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#333333',
     }).setOrigin(0.5);
 

@@ -129,6 +129,20 @@ export default class SoundManager {
     this._playTone(63, 0.8, 'sine', 0.04, 5);
   }
 
+  playTypewriterTick(speaker) {
+    if (!this.ensureContext()) return;
+    const freq = speaker === 'M.O.T.H.E.R.' ? 600 : speaker === 'pepper' ? 1000 : 800;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.value = 0.04;
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.015);
+    osc.connect(gain).connect(this.masterGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.015);
+  }
+
   playMenuClick() {
     this._playTone(1000, 0.02, 'square', 0.06);
   }
