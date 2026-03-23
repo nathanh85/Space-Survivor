@@ -2,72 +2,233 @@
 // Each has: id, type, trigger, speaker, portrait, lines, choices, next
 
 export const STORY_BEATS = [
+  // === ACT 1 CUTSCENES ===
   {
     id: 'act1_intro',
     type: 'cutscene',
     trigger: 'game_start',
-    speaker: 'sister',
-    portrait: 'sister_neutral',
+    speaker: 'pepper',
+    portrait: 'pepper_neutral',
     lines: [
-      "We made it! I can't believe that rusty warp drive actually worked.",
-      "Sensors are picking up a station nearby.",
-      "Let's dock before anything else falls off the ship."
+      "Well Pax... we're alive. That's somethin'.",
+      "The Dustkicker's seen better days, but she's still in one piece. Mostly.",
+      "M.O.T.H.E.R. took everything. Our home. Mom and Dad. The whole dang planet.",
+      "But we ain't done yet. Not by a long shot.",
+      "See those asteroids out there? I reckon we can mine enough iron to patch her up.",
+      "Let's get to work, partner."
     ],
     choices: null,
     next: null
   },
   {
-    id: 'act1_first_system',
-    type: 'transmission',
-    trigger: 'enter_system_first',
-    speaker: 'station',
-    portrait: null,
+    id: 'act1_first_warp',
+    type: 'cutscene',
+    trigger: 'first_warp',
+    speaker: 'pepper',
+    portrait: 'pepper_excited',
     lines: [
-      "Incoming vessel, you are cleared for approach.",
-      "Welcome to the Core Worlds. Try not to hit anything."
+      "Warp drive's online! Well... mostly online. It's making a sound I don't love.",
+      "Hold on to somethin', Pax!",
+      "...We made it! The Dustkicker flies!",
+      "Next stop: anywhere that ain't here."
     ],
     choices: null,
     next: null
   },
+
+  // === TRANSMISSIONS ===
+  {
+    id: 'transmission_mother_warning',
+    type: 'transmission',
+    trigger: 'enter_system_first',
+    speaker: 'M.O.T.H.E.R.',
+    portrait: null,
+    lines: [
+      "ATTENTION: THIS SECTOR IS UNDER JURISDICTION OF M.O.T.H.E.R.",
+      "ALL UNREGISTERED VESSELS WILL BE CATALOGUED, FINED, AND PROCESSED.",
+      "RESISTANCE IS INEFFICIENT. COMPLIANCE IS MANDATORY.",
+      "HAVE A PRODUCTIVE DAY."
+    ],
+    choices: null,
+    next: null
+  },
+  {
+    id: 'transmission_outrider_contact',
+    type: 'transmission',
+    trigger: 'enter_frontier_first',
+    speaker: 'outrider',
+    portrait: null,
+    lines: [
+      "*static* ...you're the Zion kids, ain't ya?",
+      "Word travels fast out here. M.O.T.H.E.R. took your planet same as ours.",
+      "Name's not important. But if you're lookin' for friends... find the Outriders.",
+      "We're out here. And we ain't quittin'. *static*"
+    ],
+    choices: null,
+    next: null
+  },
+
+  // === PEPPER BARKS ===
   {
     id: 'bark_first_asteroid',
     type: 'bark',
     trigger: 'near_asteroid_first',
-    speaker: 'sister',
+    speaker: 'pepper',
     portrait: null,
-    lines: [
-      "That asteroid looks like it has iron deposits. Try clicking on it!"
-    ],
-    choices: null,
-    next: null
-  },
-  {
-    id: 'bark_low_fuel',
-    type: 'bark',
-    trigger: 'fuel_below_20',
-    speaker: 'sister',
-    portrait: null,
-    lines: [
-      "We're running low on fuel. Maybe don't warp anywhere far?"
-    ],
-    choices: null,
-    next: null
+    lines: ["I reckon that rock's got iron in it. Try clicking on it, Pax!"]
   },
   {
     id: 'bark_first_mine',
     type: 'bark',
     trigger: 'first_mine_complete',
-    speaker: 'sister',
+    speaker: 'pepper',
     portrait: null,
-    lines: [
-      "Nice! We got some resources. I can already think of ten things to build with that."
-    ],
-    choices: null,
-    next: null
+    lines: ["Nice haul! I can already think of ten things to build with that."]
+  },
+  {
+    id: 'bark_low_fuel',
+    type: 'bark',
+    trigger: 'fuel_below_20',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["We're runnin' on fumes, Pax. Maybe don't warp anywhere far?"]
+  },
+  {
+    id: 'bark_low_hull',
+    type: 'bark',
+    trigger: 'hull_below_25',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["The Dustkicker's fallin' apart! We need to patch her up, pronto!"]
+  },
+  {
+    id: 'bark_new_system',
+    type: 'bark',
+    trigger: 'enter_new_system',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["New system! Let me get a scan goin'. Never know what's out here."]
+  },
+  {
+    id: 'bark_near_station',
+    type: 'bark',
+    trigger: 'near_station_first',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["There's a station up ahead. Might be friendly. Might not. Let's find out."]
+  },
+  {
+    id: 'bark_danger_high',
+    type: 'bark',
+    trigger: 'enter_danger_6plus',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Pax... this sector's got a real high danger rating. Keep your eyes peeled."]
+  },
+  {
+    id: 'bark_first_gate',
+    type: 'bark',
+    trigger: 'near_gate_first',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["That's a warp gate! Press E when you're close and we can jump to the next system."]
+  },
+  {
+    id: 'bark_inventory_full',
+    type: 'bark',
+    trigger: 'inventory_full',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["We're packed to the gills, Pax. Gotta sell or use some of this stuff."]
+  },
+  {
+    id: 'bark_mother_drones',
+    type: 'bark',
+    trigger: 'first_enemy_spotted',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Tin Badges! M.O.T.H.E.R.'s patrol drones. They don't look friendly!"]
+  },
+  {
+    id: 'bark_combat_callout_1',
+    type: 'bark',
+    trigger: 'combat_random',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Incoming from starboard, Pax!"]
+  },
+  {
+    id: 'bark_combat_callout_2',
+    type: 'bark',
+    trigger: 'combat_random',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Watch your six!"]
+  },
+  {
+    id: 'bark_combat_callout_3',
+    type: 'bark',
+    trigger: 'combat_random',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Yeehaw! Nice shootin', Pax!"]
+  },
+  {
+    id: 'bark_dungeon_entry',
+    type: 'bark',
+    trigger: 'near_dungeon_gate',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["That gate's unstable. Whatever's on the other side ain't gonna be friendly. You sure about this?"]
+  },
+  {
+    id: 'bark_emotional_parents',
+    type: 'bark',
+    trigger: 'random_idle',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["You think Mom and Dad are okay in there, Pax?"]
+  },
+  {
+    id: 'bark_emotional_home',
+    type: 'bark',
+    trigger: 'random_idle',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["I miss Zion. I miss how it was before M.O.T.H.E.R. showed up."]
+  },
+  {
+    id: 'bark_idle_humor_1',
+    type: 'bark',
+    trigger: 'random_idle',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Hey Pax, what do you call a ship that won't start? ...The Dustkicker. Oh wait."]
+  },
+  {
+    id: 'bark_idle_humor_2',
+    type: 'bark',
+    trigger: 'random_idle',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["We're burnin' daylight! ...Well, starlight. Same thing out here."]
   }
 ];
 
-// Helper to find a story beat by trigger
+// --- HELPERS ---
 export function getStoryBeat(trigger) {
   return STORY_BEATS.find(b => b.trigger === trigger);
+}
+
+export function getStoryBeatById(id) {
+  return STORY_BEATS.find(b => b.id === id);
+}
+
+export function getBarksByTrigger(trigger) {
+  return STORY_BEATS.filter(b => b.type === 'bark' && b.trigger === trigger);
+}
+
+export function getRandomBark(trigger) {
+  const barks = getBarksByTrigger(trigger);
+  return barks.length ? barks[Math.floor(Math.random() * barks.length)] : null;
 }

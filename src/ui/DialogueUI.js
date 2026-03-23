@@ -7,11 +7,28 @@ import Phaser from 'phaser';
 const BOX_HEIGHT = 180;
 const PORTRAIT_SIZE = 100;
 const CHARS_PER_SEC = 30;
-const SPEAKER_COLORS = {
-  sister: '#87CEEB',
-  station: '#00d4ff',
-  default: '#ffffff',
+
+// Per-character portrait colors and speaker label colors
+const PORTRAIT_COLORS = {
+  pepper:       { bg: 0x87CEEB, initial: 'P', label: '#87CEEB' },
+  pax:          { bg: 0xe67e22, initial: 'P', label: '#e67e22' },
+  grix:         { bg: 0xf39c12, initial: 'G', label: '#f39c12' },
+  'commander vera': { bg: 0x3498db, initial: 'V', label: '#3498db' },
+  '???':        { bg: 0x666666, initial: '?', label: '#999999' },
+  'M.O.T.H.E.R.': { bg: 0xe74c3c, initial: 'M', label: '#e74c3c' },
+  outrider:     { bg: 0x2ecc71, initial: 'O', label: '#2ecc71' },
 };
+
+function getPortraitInfo(speaker) {
+  const key = (speaker || '').toLowerCase();
+  // Try exact match first
+  if (PORTRAIT_COLORS[key]) return PORTRAIT_COLORS[key];
+  // Try partial match
+  for (const [k, v] of Object.entries(PORTRAIT_COLORS)) {
+    if (key.includes(k)) return v;
+  }
+  return { bg: 0x1a2a3a, initial: (speaker || '?')[0].toUpperCase(), label: '#ffffff' };
+}
 
 export default class DialogueUI {
   constructor(scene) {
@@ -22,6 +39,7 @@ export default class DialogueUI {
     this.displayedChars = 0;
     this.fullLineText = '';
     this.onComplete = null;
+    this._initTexts = [];
 
     // Graphics
     this.container = scene.add.container(0, 0).setScrollFactor(0).setDepth(700).setVisible(false);
@@ -82,6 +100,8 @@ export default class DialogueUI {
     this.currentBeat = null;
     for (const c of this.choiceTexts) c.destroy();
     this.choiceTexts = [];
+    for (const t of this._initTexts) t.destroy();
+    this._initTexts = [];
     if (this.onComplete) {
       const cb = this.onComplete;
       this.onComplete = null;
@@ -92,7 +112,6 @@ export default class DialogueUI {
   showCurrentLine() {
     const beat = this.currentBeat;
     if (!beat || this.currentLineIndex >= beat.lines.length) {
-      // All lines done
       if (beat && beat.choices && beat.choices.length > 0) {
         this.showChoices();
       } else {
@@ -116,12 +135,10 @@ export default class DialogueUI {
     if (!this.isOpen || !this.currentBeat) return;
 
     if (this.displayedChars < this.fullLineText.length) {
-      // Skip to end of current line
       this.displayedChars = this.fullLineText.length;
       this.dialogueText.setText(this.fullLineText);
       this.advanceHint.setVisible(true);
     } else {
-      // Next line
       this.currentLineIndex++;
       this.showCurrentLine();
     }
@@ -132,6 +149,10 @@ export default class DialogueUI {
     const H = this.scene.cameras.main.height;
     const boxY = H - BOX_HEIGHT;
 
+    // Clean up old initials
+    for (const t of this._initTexts) t.destroy();
+    this._initTexts = [];
+
     // Background
     this.bgGfx.clear();
     this.bgGfx.fillStyle(0x000000, 0.85);
@@ -140,6 +161,7 @@ export default class DialogueUI {
     this.bgGfx.strokeRect(0, boxY, W, BOX_HEIGHT);
 
     const beat = this.currentBeat;
+    const info = getPortraitInfo(beat.speaker);
 
     // Portrait
     const px = 16, py = boxY + 12;
@@ -152,29 +174,24 @@ export default class DialogueUI {
       this.portraitImage.setDisplaySize(PORTRAIT_SIZE, PORTRAIT_SIZE);
       this.portraitImage.setVisible(true);
     } else {
-      // Placeholder colored rectangle with initial
-      this.portraitGfx.fillStyle(0x1a2a3a);
+      // Colored rectangle placeholder with initial
+      this.portraitGfx.fillStyle(info.bg, 0.3);
       this.portraitGfx.fillRect(px, py, PORTRAIT_SIZE, PORTRAIT_SIZE);
-      this.portraitGfx.lineStyle(1, 0x00d4ff, 0.5);
+      this.portraitGfx.lineStyle(1, info.bg, 0.6);
       this.portraitGfx.strokeRect(px, py, PORTRAIT_SIZE, PORTRAIT_SIZE);
 
-      // Speaker initial
-      const initial = (beat.speaker || '?')[0].toUpperCase();
-      const initText = this.scene.add.text(px + PORTRAIT_SIZE / 2, py + PORTRAIT_SIZE / 2, initial, {
-        fontSize: '36px', fontFamily: 'monospace', color: '#334455',
+      const initText = this.scene.add.text(px + PORTRAIT_SIZE / 2, py + PORTRAIT_SIZE / 2, info.initial, {
+        fontSize: '36px', fontFamily: 'monospace', color: info.label,
       }).setOrigin(0.5).setScrollFactor(0);
       this.container.add(initText);
-      // Store for cleanup
-      if (!this._initTexts) this._initTexts = [];
       this._initTexts.push(initText);
     }
 
     // Speaker name
     const textX = px + PORTRAIT_SIZE + 16;
-    const speakerColor = SPEAKER_COLORS[beat.speaker] || SPEAKER_COLORS.default;
     this.speakerText.setPosition(textX, boxY + 12);
     this.speakerText.setText((beat.speaker || 'Unknown').toUpperCase());
-    this.speakerText.setColor(speakerColor);
+    this.speakerText.setColor(info.label);
 
     // Dialogue text
     this.dialogueText.setPosition(textX, boxY + 32);
@@ -188,7 +205,6 @@ export default class DialogueUI {
   update(delta) {
     if (!this.isOpen || !this.currentBeat) return;
 
-    // Typewriter effect
     if (this.displayedChars < this.fullLineText.length) {
       this.displayedChars += CHARS_PER_SEC * (delta / 1000);
       const chars = Math.min(Math.floor(this.displayedChars), this.fullLineText.length);
@@ -202,8 +218,6 @@ export default class DialogueUI {
 
   destroy() {
     this.container.destroy();
-    if (this._initTexts) {
-      for (const t of this._initTexts) t.destroy();
-    }
+    for (const t of this._initTexts) t.destroy();
   }
 }

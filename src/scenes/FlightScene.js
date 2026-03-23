@@ -9,7 +9,7 @@ import Player from '../entities/Player.js';
 import InventorySystem from '../systems/InventorySystem.js';
 import { RESOURCES, getAvailableResources } from '../data/resources.js';
 import { RNG } from '../config/constants.js';
-import { STORY_BEATS, getStoryBeat } from '../data/story.js';
+import { STORY_BEATS, getStoryBeat, getBarksByTrigger, getRandomBark } from '../data/story.js';
 import { NPCS } from '../data/npcs.js';
 import DialogueUI from '../ui/DialogueUI.js';
 
@@ -20,15 +20,6 @@ export default class FlightScene extends Phaser.Scene {
 
   preload() {
     // Art assets will be loaded when they exist.
-    // For now, all portraits/cutscenes use placeholder fallbacks.
-    // To add art: place PNGs in public/assets/portraits/ and public/assets/cutscenes/
-    // Then uncomment the loaders below:
-    //
-    // this.load.image('sister_neutral', 'assets/portraits/sister_neutral.png');
-    // this.load.image('npc_merchant1', 'assets/portraits/npc_merchant1.png');
-    // this.load.image('cutscene_act1_intro', 'assets/cutscenes/act1_intro.png');
-    //
-    // this.load.on('loaderror', () => {}); // silently ignore missing
   }
 
   create() {
@@ -41,15 +32,30 @@ export default class FlightScene extends Phaser.Scene {
     this.visited = new Set();
     this.nearGate = null;
     this.nearStation = null;
+    this.nearPlanetZion = false;
     this.inventory = new InventorySystem();
     this.miningAsteroid = null;
     this.invOpen = false;
     this.dialogueActive = false;
 
     // Story state
-    this.firedTriggers = new Set();
+    this.firedTriggers = new Set();       // one-shot triggers that never repeat
+    this.sessionTriggers = new Set();      // per-session triggers (fuel/hull/inventory warnings)
+    this.perSystemTriggers = new Set();    // per-system triggers (danger warning)
     this.firstMineComplete = false;
     this.nearAsteroidTriggered = false;
+    this.nearStationTriggered = false;
+    this.nearGateTriggered = false;
+    this.firstWarpDone = false;
+    this.enteredFrontier = false;
+
+    // Idle bark timer
+    this.lastActivityTime = 0;
+    this.lastIdleBarkTime = 0;
+    this.idleBarkCooldown = 60000;        // 60s between idle barks
+    this.idleThresholdMin = 30000;        // 30s before first idle bark
+    this.idleThresholdMax = 45000;        // 45s max wait
+    this.idleThreshold = 30000 + Math.random() * 15000; // randomized threshold
 
     // Input
     this.cursors = this.input.keyboard.addKeys({
@@ -58,7 +64,7 @@ export default class FlightScene extends Phaser.Scene {
     });
     this.input.keyboard.on('keydown-M', () => { if (!this.dialogueActive) this.openGalaxyMap(); });
     this.input.keyboard.on('keydown-E', () => { if (!this.dialogueActive) this.tryWarp(); });
-    this.input.keyboard.on('keydown-F', () => { if (!this.dialogueActive) this.tryDock(); });
+    this.input.keyboard.on('keydown-F', () => { if (!this.dialogueActive) this.tryDockOrLand(); });
     this.input.keyboard.on('keydown-TAB', (e) => { e.preventDefault(); if (!this.dialogueActive) this.toggleInventory(); });
     this.input.keyboard.on('keydown-I', () => { if (!this.dialogueActive) this.toggleInventory(); });
 
@@ -71,8 +77,8 @@ export default class FlightScene extends Phaser.Scene {
     this.bgLayer = this.add.graphics().setDepth(0);
     this.starLayer = this.add.graphics().setDepth(5);
     this.orbitLayer = this.add.graphics().setDepth(10);
-    this.staticEntityGfx = this.add.graphics().setDepth(20);  // planets (static)
-    this.animEntityGfx = this.add.graphics().setDepth(21);    // asteroids, gates, stations (animated)
+    this.staticEntityGfx = this.add.graphics().setDepth(20);
+    this.animEntityGfx = this.add.graphics().setDepth(21);
     this.miningGfx = this.add.graphics().setDepth(200);
     this.labelTexts = [];
 
@@ -122,21 +128,34 @@ export default class FlightScene extends Phaser.Scene {
     // Dialogue UI
     this.dialogueUI = new DialogueUI(this);
 
-    // Bark system
+    // Bark system — Pepper's color, top-center popup
     this.barkText = this.add.text(0, 0, '', {
       fontSize: '12px', fontFamily: 'monospace', color: '#87CEEB',
       backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 12, y: 6 },
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(520).setVisible(false);
     this.barkTimer = null;
 
-    // Transmission system
+    // Transmission system — styled per speaker
+    this.transContainer = this.add.container(0, 0).setScrollFactor(0).setDepth(520).setVisible(false);
+    this.transGfx = this.add.graphics().setScrollFactor(0);
+    this.transContainer.add(this.transGfx);
     this.transText = this.add.text(0, 0, '', {
       fontSize: '11px', fontFamily: 'monospace', color: '#33ff66',
-      backgroundColor: 'rgba(0,20,0,0.8)', padding: { x: 14, y: 8 },
-      stroke: '#1a4a1a', strokeThickness: 1,
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(520).setVisible(false);
+      padding: { x: 14, y: 8 },
+    }).setOrigin(0.5, 0).setScrollFactor(0);
+    this.transContainer.add(this.transText);
     this.transQueue = [];
     this.transTimer = null;
+    this.transLineIndex = 0;
+    this.transCurrentBeat = null;
+    this.transDismissable = false;
+
+    // Transmission dismiss input
+    this.input.keyboard.on('keydown-SPACE', () => {
+      if (this.transContainer.visible && this.transDismissable) {
+        this.advanceTransmission();
+      }
+    });
 
     // Entity data
     this.planets = [];
@@ -150,6 +169,7 @@ export default class FlightScene extends Phaser.Scene {
     this.enterSystem(start.id);
 
     // Fire game_start cutscene
+    this.lastActivityTime = Date.now();
     this.time.delayedCall(500, () => this.triggerStoryBeat('game_start'));
   }
 
@@ -165,13 +185,26 @@ export default class FlightScene extends Phaser.Scene {
     this.animEntityGfx.clear();
     this.miningGfx.clear();
     this.miningAsteroid = null;
+    this.perSystemTriggers.clear();
 
     if (!this.systemCache[sysId]) {
       this.systemCache[sysId] = generateSystem(sysData, this.universe);
-      // Assign NPC to each station
       const rng = new RNG(sysData.seed + 5555);
       for (const st of this.systemCache[sysId].stations) {
         st.npc = NPCS[rng.int(0, NPCS.length - 1)];
+      }
+
+      // Add Planet Zion to the starting system
+      if (sysData.region.key === 'CORE' && this.visited.size === 0) {
+        this.systemCache[sysId].planets.push({
+          x: this.systemCache[sysId].star.x + 350,
+          y: this.systemCache[sysId].star.y - 200,
+          radius: 40,
+          orbitDist: Math.hypot(350, 200),
+          type: { name: 'Zion', color: '#2ecc71', resources: ['iron', 'carbon'] },
+          isHub: true,
+          name: 'Zion',
+        });
       }
     }
 
@@ -196,9 +229,26 @@ export default class FlightScene extends Phaser.Scene {
     this.player.setPosition(sys.star.x, sys.star.y - 180);
     if (this.player.body) this.player.body.setVelocity(0, 0);
 
-    // Transmission on first visit to a new system (not the starting one)
+    // Bark: new system (not starting system)
+    if (isFirstVisit && this.visited.size > 1) {
+      this.fireBark('enter_new_system');
+    }
+
+    // Transmission on first visit (not starting system)
     if (isFirstVisit && this.visited.size > 1) {
       this.triggerStoryBeat('enter_system_first');
+    }
+
+    // Frontier entry bark
+    if (isFirstVisit && sysData.region.key === 'FRONT' && !this.enteredFrontier) {
+      this.enteredFrontier = true;
+      this.time.delayedCall(3000, () => this.triggerStoryBeat('enter_frontier_first'));
+    }
+
+    // High danger bark
+    if (sysData.danger >= 6 && !this.perSystemTriggers.has('danger_warned')) {
+      this.perSystemTriggers.add('danger_warned');
+      this.time.delayedCall(1500, () => this.fireBark('enter_danger_6plus'));
     }
   }
 
@@ -207,6 +257,7 @@ export default class FlightScene extends Phaser.Scene {
     for (const a of asteroids) {
       let nearest = planets[0], nd = Infinity;
       for (const p of planets) {
+        if (p.isHub) continue; // skip Zion for resource assignment
         const d = Math.hypot(a.x - p.x, a.y - p.y);
         if (d < nd) { nd = d; nearest = p; }
       }
@@ -253,13 +304,14 @@ export default class FlightScene extends Phaser.Scene {
 
   drawStaticEntities() {
     const g = this.staticEntityGfx; g.clear();
-    // Planets (never animate)
+    // Planets
     for (const p of this.planets) {
       const c = Phaser.Display.Color.HexStringToColor(p.type.color).color;
       g.fillStyle(c); g.fillCircle(p.x, p.y, p.radius);
       g.fillStyle(0xffffff, 0.15); g.fillCircle(p.x - p.radius * 0.25, p.y - p.radius * 0.25, p.radius * 0.6);
-      this.labelTexts.push(this.add.text(p.x, p.y + p.radius + 12, p.type.name, {
-        fontSize: '10px', fontFamily: 'monospace', color: '#aaa',
+      const label = p.isHub ? 'Zion' : p.type.name;
+      this.labelTexts.push(this.add.text(p.x, p.y + p.radius + 12, label, {
+        fontSize: '10px', fontFamily: 'monospace', color: p.isHub ? '#2ecc71' : '#aaa',
       }).setOrigin(0.5, 0).setDepth(22));
     }
     // Station labels
@@ -277,11 +329,11 @@ export default class FlightScene extends Phaser.Scene {
     }
   }
 
-  // ========== ANIMATED ENTITIES (redrawn each frame, lightweight) ==========
+  // ========== ANIMATED ENTITIES (redrawn each frame) ==========
 
   drawAnimatedEntities(time) {
     const g = this.animEntityGfx; g.clear();
-    const t = time / 1000; // seconds
+    const t = time / 1000;
 
     // Asteroids with rotation
     for (const a of this.asteroids) {
@@ -290,7 +342,6 @@ export default class FlightScene extends Phaser.Scene {
       const rot = a.rotation + t * a.rotSpeed * 60;
       const s = a.size;
       const cos = Math.cos(rot), sin = Math.sin(rot);
-      // Rotated rectangle corners
       const hw = s / 2, hh = s * 0.4;
       const points = [
         { x: a.x + (-hw * cos - -hh * sin), y: a.y + (-hw * sin + -hh * cos) },
@@ -312,7 +363,6 @@ export default class FlightScene extends Phaser.Scene {
       const sz = s.size;
       const cos = Math.cos(rot), sin = Math.sin(rot);
       const hw = sz / 2, hh = sz / 2;
-      // Rotated square
       const pts = [
         { x: s.x + (-hw * cos - -hh * sin), y: s.y + (-hw * sin + -hh * cos) },
         { x: s.x + (hw * cos - -hh * sin),  y: s.y + (hw * sin + -hh * cos) },
@@ -323,7 +373,6 @@ export default class FlightScene extends Phaser.Scene {
       g.beginPath(); g.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < 4; i++) g.lineTo(pts[i].x, pts[i].y);
       g.closePath(); g.fillPath();
-      // Border
       g.lineStyle(1, 0x00d4ff, 0.8);
       g.beginPath(); g.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < 4; i++) g.lineTo(pts[i].x, pts[i].y);
@@ -338,7 +387,6 @@ export default class FlightScene extends Phaser.Scene {
       g.strokeCircle(ga.x, ga.y, ga.size);
       g.fillStyle(c, 0.15 * pulse);
       g.fillCircle(ga.x, ga.y, ga.size);
-      // 4 orbiting dots
       for (let i = 0; i < 4; i++) {
         const a2 = t * 1.8 + i * Math.PI / 2;
         g.fillStyle(c, pulse);
@@ -373,7 +421,7 @@ export default class FlightScene extends Phaser.Scene {
     // Dialogue UI update (typewriter)
     if (this.dialogueUI.isOpen) {
       this.dialogueUI.update(delta);
-      return; // Don't process game input while dialogue open
+      return;
     }
 
     if (this.invOpen) {
@@ -384,6 +432,14 @@ export default class FlightScene extends Phaser.Scene {
     // Player
     this.player.update(this.cursors, this.input.activePointer);
 
+    // Track activity for idle barks
+    if (this.player.body && (Math.abs(this.player.body.velocity.x) > 20 || Math.abs(this.player.body.velocity.y) > 20)) {
+      this.lastActivityTime = Date.now();
+    }
+    if (this.input.activePointer.isDown) {
+      this.lastActivityTime = Date.now();
+    }
+
     // Engine trails
     if (this.player.body && (Math.abs(this.player.body.velocity.x) > 30 || Math.abs(this.player.body.velocity.y) > 30)) {
       this.spawnEngineTrail();
@@ -393,7 +449,21 @@ export default class FlightScene extends Phaser.Scene {
     this.nearGate = null;
     for (const ga of this.gates) {
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, ga.x, ga.y) < 55) {
-        this.nearGate = ga; break;
+        this.nearGate = ga;
+        // Bark: first gate
+        if (!this.nearGateTriggered) {
+          this.nearGateTriggered = true;
+          this.fireBark('near_gate_first');
+        }
+        // Bark: dungeon gate
+        if (ga.isDungeon) {
+          const dungeonKey = `dungeon_${ga.x}_${ga.y}`;
+          if (!this.firedTriggers.has(dungeonKey)) {
+            this.firedTriggers.add(dungeonKey);
+            this.fireBark('near_dungeon_gate');
+          }
+        }
+        break;
       }
     }
 
@@ -401,7 +471,21 @@ export default class FlightScene extends Phaser.Scene {
     this.nearStation = null;
     for (const st of this.stations) {
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, st.x, st.y) < 100) {
-        this.nearStation = st; break;
+        this.nearStation = st;
+        if (!this.nearStationTriggered) {
+          this.nearStationTriggered = true;
+          this.fireBark('near_station_first');
+        }
+        break;
+      }
+    }
+
+    // Planet Zion proximity
+    this.nearPlanetZion = false;
+    for (const p of this.planets) {
+      if (p.isHub && Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 100) {
+        this.nearPlanetZion = true;
+        break;
       }
     }
 
@@ -410,16 +494,32 @@ export default class FlightScene extends Phaser.Scene {
       for (const a of this.asteroids) {
         if (!a.mined && Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y) < 80) {
           this.nearAsteroidTriggered = true;
-          this.triggerStoryBeat('near_asteroid_first');
+          this.fireBark('near_asteroid_first');
           break;
         }
       }
     }
 
-    // Low fuel bark
-    if (this.player.fuel < this.player.maxFuel * 0.2) {
-      this.triggerStoryBeat('fuel_below_20');
+    // Low fuel bark (once per session)
+    if (this.player.fuel < this.player.maxFuel * 0.2 && !this.sessionTriggers.has('fuel_warned')) {
+      this.sessionTriggers.add('fuel_warned');
+      this.fireBark('fuel_below_20');
     }
+
+    // Low hull bark (once per session)
+    if (this.player.hull < this.player.maxHull * 0.25 && !this.sessionTriggers.has('hull_warned')) {
+      this.sessionTriggers.add('hull_warned');
+      this.fireBark('hull_below_25');
+    }
+
+    // Inventory full bark (once per session)
+    if (this.inventory.isFull() && !this.sessionTriggers.has('inv_full')) {
+      this.sessionTriggers.add('inv_full');
+      this.fireBark('inventory_full');
+    }
+
+    // Idle barks
+    this.checkIdleBark();
 
     // Animated entities
     this.drawAnimatedEntities(time);
@@ -434,10 +534,31 @@ export default class FlightScene extends Phaser.Scene {
     this.updatePrompt(W, H);
   }
 
-  // ========== PROMPT (warp / dock) ==========
+  // ========== IDLE BARK SYSTEM ==========
+
+  checkIdleBark() {
+    const now = Date.now();
+    const idleTime = now - this.lastActivityTime;
+    const sinceLastBark = now - this.lastIdleBarkTime;
+
+    if (idleTime >= this.idleThreshold && sinceLastBark >= this.idleBarkCooldown) {
+      const bark = getRandomBark('random_idle');
+      if (bark) {
+        this.showBark('Pepper: ' + bark.lines[0]);
+        this.lastIdleBarkTime = now;
+        // Randomize next threshold
+        this.idleThreshold = this.idleThresholdMin + Math.random() * (this.idleThresholdMax - this.idleThresholdMin);
+      }
+    }
+  }
+
+  // ========== PROMPT (warp / dock / land) ==========
 
   updatePrompt(W, H) {
-    if (this.nearGate) {
+    if (this.nearPlanetZion) {
+      this.promptText.setText('[F] Land at The Outpost')
+        .setColor('#2ecc71').setPosition(W / 2, H - 60).setVisible(true);
+    } else if (this.nearGate) {
       const gt = this.nearGate;
       this.promptText.setText('[E] WARP \u2192 ' + gt.targetName + (gt.isDungeon ? ' \u26A0 DUNGEON' : ''))
         .setColor(gt.isDungeon ? '#ff00ff' : '#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
@@ -495,11 +616,11 @@ export default class FlightScene extends Phaser.Scene {
         }).setOrigin(0.5).setDepth(300);
         this.tweens.add({ targets: ft, y: closest.y - 45, alpha: 0, duration: 1200, onComplete: () => ft.destroy() });
       }
-      // First mine bark
       if (!this.firstMineComplete) {
         this.firstMineComplete = true;
-        this.triggerStoryBeat('first_mine_complete');
+        this.fireBark('first_mine_complete');
       }
+      this.lastActivityTime = Date.now();
     }
   }
 
@@ -515,10 +636,32 @@ export default class FlightScene extends Phaser.Scene {
       this.scene.pause('FlightScene');
       this.scene.launch('CutsceneScene', { beatId: beat.id });
     } else if (beat.type === 'bark') {
-      this.showBark(beat.lines[0]);
+      this.showBark('Pepper: ' + beat.lines[0]);
     } else if (beat.type === 'transmission') {
-      this.showTransmission(beat.lines);
+      this.showTransmission(beat);
     }
+  }
+
+  // Fire a bark by trigger type — supports one-shot and repeatable triggers
+  fireBark(trigger) {
+    // One-shot triggers
+    const oneShot = ['near_asteroid_first', 'first_mine_complete', 'near_station_first',
+      'near_gate_first', 'near_dungeon_gate', 'enter_new_system', 'enter_danger_6plus'];
+    if (oneShot.includes(trigger)) {
+      if (this.firedTriggers.has('bark_' + trigger)) return;
+      this.firedTriggers.add('bark_' + trigger);
+    }
+
+    const bark = getRandomBark(trigger);
+    if (!bark) {
+      // Fall back to getStoryBeat for single-trigger barks
+      const beat = getStoryBeat(trigger);
+      if (beat && beat.type === 'bark') {
+        this.showBark('Pepper: ' + beat.lines[0]);
+      }
+      return;
+    }
+    this.showBark('Pepper: ' + bark.lines[0]);
   }
 
   showBark(text) {
@@ -532,23 +675,94 @@ export default class FlightScene extends Phaser.Scene {
     });
   }
 
-  showTransmission(lines) {
+  showTransmission(beat) {
     const W = this.cameras.main.width;
-    let delay = 0;
-    for (const line of lines) {
-      this.time.delayedCall(delay, () => {
-        this.transText.setText('\u25C8 ' + line).setPosition(W / 2, 50).setAlpha(0).setVisible(true);
-        this.tweens.add({ targets: this.transText, alpha: 1, duration: 200 });
+    this.transCurrentBeat = beat;
+    this.transLineIndex = 0;
+    this.transDismissable = false;
+
+    // Style based on speaker
+    const isMother = beat.speaker === 'M.O.T.H.E.R.';
+    const isOutrider = beat.speaker === 'outrider';
+    const color = isMother ? '#f39c12' : isOutrider ? '#2ecc71' : '#33ff66';
+    const bgColor = isMother ? 'rgba(40,20,0,0.9)' : isOutrider ? 'rgba(0,30,10,0.9)' : 'rgba(0,20,0,0.9)';
+    const borderColor = isMother ? 0xf39c12 : isOutrider ? 0x2ecc71 : 0x33ff66;
+
+    this.transText.setColor(color);
+    this.transText.setFontFamily('monospace');
+
+    this.transContainer.setVisible(true);
+    this.showTransmissionLine(beat, borderColor, bgColor, W);
+  }
+
+  showTransmissionLine(beat, borderColor, bgColor, W) {
+    if (this.transLineIndex >= beat.lines.length) {
+      // Done — fade out
+      this.tweens.add({ targets: this.transContainer, alpha: 0, duration: 400,
+        onComplete: () => {
+          this.transContainer.setVisible(false).setAlpha(1);
+          this.transCurrentBeat = null;
+        }
       });
-      delay += 2500;
+      return;
     }
-    this.time.delayedCall(delay, () => {
-      this.tweens.add({ targets: this.transText, alpha: 0, duration: 400,
-        onComplete: () => this.transText.setVisible(false) });
+
+    const line = beat.lines[this.transLineIndex];
+    const speakerLabel = beat.speaker === 'M.O.T.H.E.R.' ? '\u25C8 M.O.T.H.E.R.' : '\u25C8 INCOMING';
+    this.transText.setText(speakerLabel + '\n' + line);
+    this.transText.setPosition(W / 2, 40);
+
+    // Draw border box behind text
+    this.transGfx.clear();
+    const bounds = this.transText.getBounds();
+    const pad = 12;
+    this.transGfx.fillStyle(0x000000, 0.85);
+    this.transGfx.fillRect(bounds.x - pad, bounds.y - pad, bounds.width + pad * 2, bounds.height + pad * 2);
+    this.transGfx.lineStyle(1, borderColor, 0.6);
+    this.transGfx.strokeRect(bounds.x - pad, bounds.y - pad, bounds.width + pad * 2, bounds.height + pad * 2);
+
+    this.transContainer.setAlpha(0);
+    this.tweens.add({ targets: this.transContainer, alpha: 1, duration: 200 });
+
+    this.transDismissable = true;
+
+    // Auto-advance after 2.5s
+    if (this.transTimer) this.transTimer.remove();
+    this.transTimer = this.time.delayedCall(2500, () => {
+      this.advanceTransmission();
     });
   }
 
-  // ========== NPC DOCKING ==========
+  advanceTransmission() {
+    if (!this.transCurrentBeat) return;
+    if (this.transTimer) this.transTimer.remove();
+    this.transLineIndex++;
+    const W = this.cameras.main.width;
+    const beat = this.transCurrentBeat;
+    const isMother = beat.speaker === 'M.O.T.H.E.R.';
+    const isOutrider = beat.speaker === 'outrider';
+    const borderColor = isMother ? 0xf39c12 : isOutrider ? 0x2ecc71 : 0x33ff66;
+    const bgColor = isMother ? 'rgba(40,20,0,0.9)' : 'rgba(0,30,10,0.9)';
+    this.showTransmissionLine(beat, borderColor, bgColor, W);
+  }
+
+  // ========== NPC DOCKING / HUB LANDING ==========
+
+  tryDockOrLand() {
+    if (this.invOpen || this.dialogueActive) return;
+
+    // Priority: Planet Zion landing
+    if (this.nearPlanetZion) {
+      this.scene.pause('FlightScene');
+      this.scene.launch('HubScene');
+      return;
+    }
+
+    // Station docking
+    if (this.nearStation) {
+      this.tryDock();
+    }
+  }
 
   tryDock() {
     if (!this.nearStation || this.invOpen) return;
@@ -578,6 +792,16 @@ export default class FlightScene extends Phaser.Scene {
       return [d.greeting, d.hint, d.farewell];
     }
     return [d.greeting || 'Hello.', d.farewell || 'Goodbye.'];
+  }
+
+  returnFromHub() {
+    this.scene.resume('FlightScene');
+    // Position player near Zion
+    const zion = this.planets.find(p => p.isHub);
+    if (zion) {
+      this.player.setPosition(zion.x, zion.y + 120);
+      if (this.player.body) this.player.body.setVelocity(0, 0);
+    }
   }
 
   // ========== HUD ==========
@@ -622,7 +846,7 @@ export default class FlightScene extends Phaser.Scene {
     g.fillCircle(mx + sys.star.x * sx, my + sys.star.y * sy, 2.5);
     for (const p of this.planets) {
       g.fillStyle(Phaser.Display.Color.HexStringToColor(p.type.color).color);
-      g.fillCircle(mx + p.x * sx, my + p.y * sy, 2);
+      g.fillCircle(mx + p.x * sx, my + p.y * sy, p.isHub ? 3 : 2);
     }
     for (const s of this.stations) { g.fillStyle(0xffffff); g.fillRect(mx + s.x * sx - 1, my + s.y * sy - 1, 3, 3); }
     for (const ga of this.gates) {
@@ -711,9 +935,33 @@ export default class FlightScene extends Phaser.Scene {
   startWarp(gateData) {
     if (gateData.isDungeon || this.player.fuel < 10) return;
     this.player.fuel = Math.max(0, this.player.fuel - 10);
+
+    // First warp cutscene
+    if (!this.firstWarpDone) {
+      this.firstWarpDone = true;
+      this.firedTriggers.add('first_warp');
+      // Show cutscene after warp completes
+      this._pendingFirstWarp = true;
+    }
+
     this.scene.pause('FlightScene');
     this.scene.launch('WarpScene', { targetName: gateData.targetName, targetId: gateData.targetId });
   }
 
-  completeWarp(targetId) { this.scene.resume('FlightScene'); this.enterSystem(targetId); }
+  completeWarp(targetId) {
+    this.scene.resume('FlightScene');
+    this.enterSystem(targetId);
+
+    // Fire first warp cutscene after landing in new system
+    if (this._pendingFirstWarp) {
+      this._pendingFirstWarp = false;
+      this.time.delayedCall(500, () => {
+        const beat = STORY_BEATS.find(b => b.id === 'act1_first_warp');
+        if (beat) {
+          this.scene.pause('FlightScene');
+          this.scene.launch('CutsceneScene', { beatId: beat.id });
+        }
+      });
+    }
+  }
 }

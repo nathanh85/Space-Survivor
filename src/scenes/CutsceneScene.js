@@ -3,14 +3,28 @@
 // ============================================================
 
 import Phaser from 'phaser';
-import { STORY_BEATS, getStoryBeat } from '../data/story.js';
+import { STORY_BEATS } from '../data/story.js';
 
 const CHARS_PER_SEC = 30;
+
 const SPEAKER_COLORS = {
-  sister: '#87CEEB',
-  station: '#00d4ff',
-  default: '#ffffff',
+  pepper:       '#87CEEB',
+  pax:          '#e67e22',
+  'M.O.T.H.E.R.': '#e74c3c',
+  outrider:     '#2ecc71',
+  grix:         '#f39c12',
+  'commander vera': '#3498db',
+  '???':        '#999999',
 };
+
+function getSpeakerColor(speaker) {
+  const key = (speaker || '').toLowerCase();
+  if (SPEAKER_COLORS[key]) return SPEAKER_COLORS[key];
+  for (const [k, v] of Object.entries(SPEAKER_COLORS)) {
+    if (key.includes(k)) return v;
+  }
+  return '#ffffff';
+}
 
 export default class CutsceneScene extends Phaser.Scene {
   constructor() {
@@ -61,7 +75,7 @@ export default class CutsceneScene extends Phaser.Scene {
     g2.strokeRect(0, boxY, W, 160);
 
     // Speaker name
-    const speakerColor = SPEAKER_COLORS[this.beat.speaker] || SPEAKER_COLORS.default;
+    const speakerColor = getSpeakerColor(this.beat.speaker);
     this.add.text(30, boxY + 12, (this.beat.speaker || '').toUpperCase(), {
       fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', color: speakerColor,
     });
@@ -100,13 +114,11 @@ export default class CutsceneScene extends Phaser.Scene {
 
   advance() {
     if (!this.lineComplete) {
-      // Skip to end
       this.displayedChars = this.fullLineText.length;
       this.dialogueText.setText(this.fullLineText);
       this.lineComplete = true;
       this.advanceHint.setVisible(true);
     } else {
-      // Next line
       this.currentLineIndex++;
       this.showLine();
     }
@@ -129,7 +141,6 @@ export default class CutsceneScene extends Phaser.Scene {
     this.scene.stop('CutsceneScene');
     this.scene.resume('FlightScene');
 
-    // Trigger next beat if exists
     if (this.beat && this.beat.next) {
       const flightScene = this.scene.get('FlightScene');
       if (flightScene && flightScene.triggerStoryBeat) {
