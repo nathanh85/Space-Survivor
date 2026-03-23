@@ -23,9 +23,9 @@ export default class Player extends Phaser.GameObjects.Container {
     this.credits = 500;
 
     // Physics tuning
-    this.accelRate = PLAYER_DEFAULTS.accel;
     this.turnSmooth = PLAYER_DEFAULTS.turnSmooth;
     this.shipAngle = 0;
+    this.isThrusting = false;
 
     // Ship graphics
     this.shipGfx = scene.add.graphics();
@@ -35,8 +35,8 @@ export default class Player extends Phaser.GameObjects.Container {
     // Physics body
     scene.physics.add.existing(this);
     this.body.setCircle(14, -14, -14);
-    this.body.setMaxVelocity(PLAYER_DEFAULTS.speed);
-    this.body.setDrag(PLAYER_DEFAULTS.speed * 1.8);
+    this.body.setMaxVelocity(PLAYER_DEFAULTS.maxSpeed);
+    this.body.setDrag(PLAYER_DEFAULTS.drag);
     this.body.setCollideWorldBounds(true);
 
     this.setDepth(100);
@@ -64,23 +64,6 @@ export default class Player extends Phaser.GameObjects.Container {
   }
 
   update(cursors, pointer) {
-    let ax = 0, ay = 0;
-    if (cursors.up.isDown || cursors.w.isDown) ay = -1;
-    if (cursors.down.isDown || cursors.s.isDown) ay = 1;
-    if (cursors.left.isDown || cursors.a.isDown) ax = -1;
-    if (cursors.right.isDown || cursors.d.isDown) ax = 1;
-    if (ax && ay) { ax /= Math.SQRT2; ay /= Math.SQRT2; }
-
-    const isMoving = ax !== 0 || ay !== 0;
-
-    if (isMoving) {
-      this.body.setAcceleration(ax * this.accelRate, ay * this.accelRate);
-      this.drawShip(true);
-    } else {
-      this.body.setAcceleration(0, 0);
-      this.drawShip(false);
-    }
-
     // Aim toward mouse
     const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const target = Phaser.Math.Angle.Between(this.x, this.y, wp.x, wp.y);
@@ -89,6 +72,30 @@ export default class Player extends Phaser.GameObjects.Container {
     while (diff < -Math.PI) diff += Math.PI * 2;
     this.shipAngle += diff * this.turnSmooth;
     this.setRotation(this.shipAngle);
+
+    // Thrust-based movement relative to ship facing
+    const cos = Math.cos(this.shipAngle);
+    const sin = Math.sin(this.shipAngle);
+    let forward = 0, strafe = 0;
+
+    if (cursors.w.isDown || cursors.up.isDown) forward = PLAYER_DEFAULTS.thrust;
+    if (cursors.s.isDown || cursors.down.isDown) forward = -PLAYER_DEFAULTS.reverse;
+    if (cursors.a.isDown || cursors.left.isDown) strafe = -PLAYER_DEFAULTS.strafe;
+    if (cursors.d.isDown || cursors.right.isDown) strafe = PLAYER_DEFAULTS.strafe;
+
+    this.isThrusting = forward > 0;
+    const hasInput = forward !== 0 || strafe !== 0;
+
+    if (hasInput) {
+      // Forward: (cos, sin), Right: (-sin, cos) in screen coords
+      const ax = forward * cos + strafe * (-sin);
+      const ay = forward * sin + strafe * cos;
+      this.body.setAcceleration(ax, ay);
+      this.drawShip(this.isThrusting);
+    } else {
+      this.body.setAcceleration(0, 0);
+      this.drawShip(false);
+    }
 
     // Shield regen
     if (this.shield < this.maxShield) {

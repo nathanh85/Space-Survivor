@@ -70,9 +70,11 @@ export const DANGER_COLORS = [
 
 // --- PLAYER DEFAULTS ---
 export const PLAYER_DEFAULTS = {
-  speed: 220,       // pixels/sec (Phaser uses px/s not px/frame)
-  drag: 0.94,
-  accel: 400,       // acceleration in px/s²
+  thrust: 200,      // forward acceleration px/s²
+  reverse: 100,     // backward acceleration px/s²
+  strafe: 120,      // side acceleration px/s²
+  maxSpeed: 300,    // velocity cap px/s
+  drag: 150,        // Arcade physics drag value
   turnSmooth: 0.12,
   hull: 100,
   shield: 50,

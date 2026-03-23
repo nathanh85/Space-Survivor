@@ -104,7 +104,7 @@ export function generateSystem(sysData, universeData) {
     system.asteroids.push({
       x: system.star.x + Math.cos(angle) * dist + rng.int(-60, 60),
       y: system.star.y + Math.sin(angle) * dist + rng.int(-60, 60),
-      size: rng.int(3, 10),
+      size: rng.int(8, 20),
       color: rng.pick(['#8B7355', '#A0A0A0', '#6B6B6B', '#9B7653']),
       rotation: rng.float(0, Math.PI * 2),
       rotSpeed: rng.float(-0.015, 0.015),

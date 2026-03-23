@@ -1,9 +1,10 @@
 // ============================================================
-// Block Survival: Space Pirates — Phaser 3 Entry Point
+// Space Survivor: Space Pirates — Phaser 3 Entry Point
 // ============================================================
 
 import Phaser from 'phaser';
 import TitleScene from './scenes/TitleScene.js';
+import IntroScene from './scenes/IntroScene.js';
 import FlightScene from './scenes/FlightScene.js';
 import GalaxyMapScene from './scenes/GalaxyMapScene.js';
 import WarpScene from './scenes/WarpScene.js';
@@ -15,11 +16,15 @@ const config = {
   width: 1280,
   height: 800,
   backgroundColor: '#050510',
+  render: {
+    pixelArt: true,
+    antialias: false,
+  },
   physics: {
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [TitleScene, FlightScene, GalaxyMapScene, WarpScene, CutsceneScene, HubScene],
+  scene: [TitleScene, IntroScene, FlightScene, GalaxyMapScene, WarpScene, CutsceneScene, HubScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
