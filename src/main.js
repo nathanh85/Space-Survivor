@@ -1,5 +1,5 @@
 // ============================================================
-// Space Survivor: Space Pirates — Phaser 3 Entry Point
+// P.E.S.T.S. — A Space Western — Phaser 3 Entry Point
 // ============================================================
 
 import Phaser from 'phaser';

@@ -3,7 +3,7 @@
 // ============================================================
 
 import Phaser from 'phaser';
-import { SYS_W, SYS_H, UNIVERSE_COLS, UNIVERSE_ROWS, DANGER_COLORS } from '../config/constants.js';
+import { SYS_W, SYS_H, UNIVERSE_COLS, UNIVERSE_ROWS, DANGER_COLORS, BUILD_VERSION, BUILD_DATE } from '../config/constants.js';
 import { generateUniverse, generateSystem } from '../systems/UniverseGenerator.js';
 import Player from '../entities/Player.js';
 import InventorySystem from '../systems/InventorySystem.js';
@@ -13,6 +13,7 @@ import { STORY_BEATS, getStoryBeat, getBarksByTrigger, getRandomBark } from '../
 import { NPCS } from '../data/npcs.js';
 import DialogueUI from '../ui/DialogueUI.js';
 import SoundManager from '../systems/SoundManager.js';
+import TextQueue from '../systems/TextQueue.js';
 
 export default class FlightScene extends Phaser.Scene {
   constructor() {
@@ -51,8 +52,10 @@ export default class FlightScene extends Phaser.Scene {
     this.firstWarpDone = false;
     this.enteredFrontier = false;
 
-    // Transmission queue
-    this.transmissionQueue = [];
+    // Text queue (barks, transmissions, dialogues — one at a time)
+    this.textQueue = new TextQueue();
+    this.textQueue.onShowCallback = (item) => this._showQueueItem(item);
+    this.textQueue.onDismissCallback = (item) => this._dismissQueueItem(item);
 
     // Idle bark timer
     this.lastActivityTime = 0;
@@ -65,7 +68,7 @@ export default class FlightScene extends Phaser.Scene {
     // Input
     this.cursors = this.input.keyboard.addKeys({
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
-      w: 'W', a: 'A', s: 'S', d: 'D',
+      w: 'W', a: 'A', s: 'S', d: 'D', space: 'SPACE',
     });
     this.input.keyboard.on('keydown-M', () => { if (!this.dialogueActive) this.openGalaxyMap(); });
     this.input.keyboard.on('keydown-E', () => { if (!this.dialogueActive) this.tryWarp(); });
@@ -123,6 +126,11 @@ export default class FlightScene extends Phaser.Scene {
 
     this.controlsText = this.add.text(0, 0, '[W] Thrust  [Mouse] Aim  [A/D] Strafe  [M] Map  [E] Warp  [F] Dock  [TAB] Inv', {
       fontSize: '10px', fontFamily: 'monospace', color: '#444444',
+    }).setOrigin(1, 1).setScrollFactor(0).setDepth(501);
+
+    // Version string (bottom-right, dim)
+    this.versionText = this.add.text(0, 0, BUILD_VERSION + ' | ' + BUILD_DATE, {
+      fontSize: '10px', fontFamily: 'monospace', color: 'rgba(255,255,255,0.2)',
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(501);
 
     // Prompt text with background for visibility
@@ -346,21 +354,43 @@ export default class FlightScene extends Phaser.Scene {
       if (a.mined) continue;
       const c = Phaser.Display.Color.HexStringToColor(a.color).color;
       const rot = a.rotation + t * a.rotSpeed * 60;
-      const s = a.size;
       const cos = Math.cos(rot), sin = Math.sin(rot);
-      const hw = s / 2, hh = s * 0.4;
-      const points = [
-        { x: a.x + (-hw * cos - -hh * sin), y: a.y + (-hw * sin + -hh * cos) },
-        { x: a.x + (hw * cos - -hh * sin),  y: a.y + (hw * sin + -hh * cos) },
-        { x: a.x + (hw * cos - hh * sin),   y: a.y + (hw * sin + hh * cos) },
-        { x: a.x + (-hw * cos - hh * sin),  y: a.y + (-hw * sin + hh * cos) },
-      ];
+
+      // Generate irregular polygon shape from seed (deterministic)
+      if (!a._shapePoints) {
+        const srng = new RNG(a.shapeSeed || 12345);
+        const numPts = srng.int(5, 8);
+        a._shapePoints = [];
+        for (let i = 0; i < numPts; i++) {
+          const angle = (i / numPts) * Math.PI * 2;
+          const r = a.size * (0.5 + srng.next() * 0.5);
+          a._shapePoints.push({ lx: Math.cos(angle) * r, ly: Math.sin(angle) * r });
+        }
+      }
+
       g.fillStyle(c);
       g.beginPath();
-      g.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < 4; i++) g.lineTo(points[i].x, points[i].y);
+      for (let i = 0; i < a._shapePoints.length; i++) {
+        const p = a._shapePoints[i];
+        const rx = p.lx * cos - p.ly * sin + a.x;
+        const ry = p.lx * sin + p.ly * cos + a.y;
+        if (i === 0) g.moveTo(rx, ry);
+        else g.lineTo(rx, ry);
+      }
       g.closePath();
       g.fillPath();
+      // Subtle edge highlight
+      g.lineStyle(0.5, 0xffffff, 0.15);
+      g.beginPath();
+      for (let i = 0; i < a._shapePoints.length; i++) {
+        const p = a._shapePoints[i];
+        const rx = p.lx * cos - p.ly * sin + a.x;
+        const ry = p.lx * sin + p.ly * cos + a.y;
+        if (i === 0) g.moveTo(rx, ry);
+        else g.lineTo(rx, ry);
+      }
+      g.closePath();
+      g.strokePath();
     }
 
     for (const s of this.stations) {
@@ -550,7 +580,7 @@ export default class FlightScene extends Phaser.Scene {
     if (idleTime >= this.idleThreshold && sinceLastBark >= this.idleBarkCooldown) {
       const bark = getRandomBark('random_idle');
       if (bark) {
-        this.showBark('Pepper: ' + bark.lines[0]);
+        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: ' + bark.lines[0] } });
         this.lastIdleBarkTime = now;
         this.idleThreshold = this.idleThresholdMin + Math.random() * (this.idleThresholdMax - this.idleThresholdMin);
       }
@@ -634,7 +664,7 @@ export default class FlightScene extends Phaser.Scene {
     }
   }
 
-  // ========== STORY / BARK / TRANSMISSION ==========
+  // ========== STORY / BARK / TRANSMISSION (via TextQueue) ==========
 
   triggerStoryBeat(trigger) {
     if (this.firedTriggers.has(trigger)) return;
@@ -646,15 +676,13 @@ export default class FlightScene extends Phaser.Scene {
       this.scene.pause('FlightScene');
       this.scene.launch('CutsceneScene', { beatId: beat.id });
     } else if (beat.type === 'bark') {
-      this.showBark('Pepper: ' + beat.lines[0]);
+      this.textQueue.enqueue({ type: 'bark', speaker: beat.speaker, data: { text: 'Pepper: ' + beat.lines[0] } });
     } else if (beat.type === 'transmission') {
-      this.queueTransmission(beat);
+      this.textQueue.enqueue({ type: 'transmission', speaker: beat.speaker, data: beat });
     }
   }
 
-  // Fire a bark by trigger type
   fireBark(trigger) {
-    // Truly one-shot triggers (never repeat across the whole game)
     const oneShot = ['near_asteroid_first', 'first_mine_complete', 'near_station_first',
       'near_gate_first', 'near_dungeon_gate'];
     if (oneShot.includes(trigger)) {
@@ -662,20 +690,39 @@ export default class FlightScene extends Phaser.Scene {
       this.firedTriggers.add('bark_' + trigger);
     }
 
-    // Per-system triggers (enter_new_system, enter_danger_6plus) are gated by callers
-
     const bark = getRandomBark(trigger);
     if (!bark) {
       const beat = getStoryBeat(trigger);
       if (beat && beat.type === 'bark') {
-        this.showBark('Pepper: ' + beat.lines[0]);
+        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: ' + beat.lines[0] } });
       }
       return;
     }
-    this.showBark('Pepper: ' + bark.lines[0]);
+    this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: ' + bark.lines[0] } });
   }
 
-  showBark(text) {
+  // --- TextQueue callbacks ---
+
+  _showQueueItem(item) {
+    if (item.type === 'bark') {
+      this._showBark(item.data.text);
+    } else if (item.type === 'transmission') {
+      this._showTransmission(item.data);
+    }
+  }
+
+  _dismissQueueItem(item) {
+    if (item.type === 'bark') {
+      if (this.barkTimer) this.barkTimer.remove();
+      this.barkText.setVisible(false);
+    } else if (item.type === 'transmission') {
+      if (this.transTimer) this.transTimer.remove();
+      this.transContainer.setVisible(false).setAlpha(1);
+      this.transCurrentBeat = null;
+    }
+  }
+
+  _showBark(text) {
     this.sound_mgr.playBarkBlip();
     const W = this.cameras.main.width;
     this.barkText.setText(text).setPosition(W / 2, 80).setAlpha(0).setVisible(true);
@@ -683,20 +730,15 @@ export default class FlightScene extends Phaser.Scene {
     if (this.barkTimer) this.barkTimer.remove();
     this.barkTimer = this.time.delayedCall(3500, () => {
       this.tweens.add({ targets: this.barkText, alpha: 0, y: 80, duration: 300,
-        onComplete: () => this.barkText.setVisible(false) });
+        onComplete: () => {
+          this.barkText.setVisible(false);
+          this.textQueue.dismiss();
+        }
+      });
     });
   }
 
-  // Transmission queue — prevents overlapping transmissions
-  queueTransmission(beat) {
-    if (this.transCurrentBeat) {
-      this.transmissionQueue.push(beat);
-    } else {
-      this.showTransmission(beat);
-    }
-  }
-
-  showTransmission(beat) {
+  _showTransmission(beat) {
     const W = this.cameras.main.width;
     this.transCurrentBeat = beat;
     this.transLineIndex = 0;
@@ -709,30 +751,20 @@ export default class FlightScene extends Phaser.Scene {
 
     this.transText.setColor(color);
 
-    // Sound
-    if (isMother) {
-      this.sound_mgr.playMotherHum();
-    } else {
-      this.sound_mgr.playTransmissionStatic();
-    }
+    if (isMother) this.sound_mgr.playMotherHum();
+    else this.sound_mgr.playTransmissionStatic();
 
     this.transContainer.setVisible(true);
-    this.showTransmissionLine(beat, borderColor, W);
+    this._showTransmissionLine(beat, borderColor, W);
   }
 
-  showTransmissionLine(beat, borderColor, W) {
+  _showTransmissionLine(beat, borderColor, W) {
     if (this.transLineIndex >= beat.lines.length) {
       this.tweens.add({ targets: this.transContainer, alpha: 0, duration: 400,
         onComplete: () => {
           this.transContainer.setVisible(false).setAlpha(1);
           this.transCurrentBeat = null;
-          // Play next queued transmission
-          if (this.transmissionQueue.length > 0) {
-            this.time.delayedCall(500, () => {
-              const next = this.transmissionQueue.shift();
-              if (next) this.showTransmission(next);
-            });
-          }
+          this.textQueue.dismiss();
         }
       });
       return;
@@ -771,7 +803,7 @@ export default class FlightScene extends Phaser.Scene {
     const isMother = beat.speaker === 'M.O.T.H.E.R.';
     const isOutrider = beat.speaker === 'outrider';
     const borderColor = isMother ? 0xf39c12 : isOutrider ? 0x2ecc71 : 0x33ff66;
-    this.showTransmissionLine(beat, borderColor, W);
+    this._showTransmissionLine(beat, borderColor, W);
   }
 
   // ========== NPC DOCKING / HUB LANDING ==========
@@ -850,6 +882,7 @@ export default class FlightScene extends Phaser.Scene {
     this.sysInfoTexts[2].setText('Danger: ' + '\u26A0'.repeat(Math.min(sd.danger, 5)) + ' ' + sd.danger + '/10')
       .setPosition(14, iy + 34).setColor(DANGER_COLORS[sd.danger] || '#e74c3c');
     this.controlsText.setPosition(W - 10, H - 10);
+    this.versionText.setPosition(W - 10, H - 22);
   }
 
   // ========== MINIMAP ==========

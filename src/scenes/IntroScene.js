@@ -55,7 +55,7 @@ export default class IntroScene extends Phaser.Scene {
     const titleDelay = delay + 2000;
 
     // Title card
-    this.titleText = this.add.text(W / 2, H * 0.4, 'SPACE SURVIVOR', {
+    this.titleText = this.add.text(W / 2, H * 0.4, 'P.E.S.T.S.', {
       fontSize: '42px', fontFamily: 'monospace', fontStyle: 'bold', color: '#00d4ff',
     }).setOrigin(0.5).setAlpha(0);
 

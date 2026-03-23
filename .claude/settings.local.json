@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo:*)",
+      "Bash(git --version)",
+      "Bash(npm install:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(echo $PATH)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//Users/nathan/.nvm/versions/**)",
+      "Read(//usr/local/lib/node_modules/npm/bin/**)",
+      "Read(//usr/local/**)",
+      "Read(//opt/**)",
+      "Read(//Users/nathan/**)",
+      "Bash(mdfind \"kMDItemFSName == ''''node''''\")",
+      "Bash(/usr/local/bin/node --version)",
+      "Bash(/usr/local/bin/npm --version)",
+      "Bash(/usr/local/bin/npm install:*)",
+      "Bash(/usr/local/bin/npm run:*)",
+      "Bash(unzip -o \"/Users/nathan/Downloads/files.zip\" -d \"/Users/nathan/Downloads/files_extracted\")",
+      "Bash(cp \"/Users/nathan/Downloads/files_extracted/BUILD_SPEC_Phase2.5b.md\" \"/Users/nathan/Things I Made/Space Game/\")",
+      "Bash(cp \"/Users/nathan/Downloads/files_extracted/GAME_DESIGN_DOC_v3.3.md\" \"/Users/nathan/Things I Made/Space Game/\")",
+      "Bash(rm -f BUILD_SPEC_Phase2.5a.md GAME_DESIGN_DOC.md GAME_DESIGN_DOC_v3.1.md)",
+      "Bash(ls *.md)"
+    ]
+  }
+}

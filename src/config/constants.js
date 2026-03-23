@@ -74,13 +74,17 @@ export const PLAYER_DEFAULTS = {
   reverse: 100,     // backward acceleration px/s²
   strafe: 120,      // side acceleration px/s²
   maxSpeed: 300,    // velocity cap px/s
-  drag: 150,        // Arcade physics drag value
+  drag: 165,        // Arcade physics drag value (was 150, +10% less bouncy)
   turnSmooth: 0.12,
   hull: 100,
   shield: 50,
   fuel: 100,
   xpNext: 100,
 };
+
+// --- BUILD INFO ---
+export const BUILD_VERSION = 'v0.4.0';
+export const BUILD_DATE = '2026-03-23';
 
 // --- COLORS ---
 export const COLORS = {
