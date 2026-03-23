@@ -32,9 +32,12 @@ export default class Player extends Phaser.GameObjects.Container {
     this.add(this.shipGfx);
     this.drawShip(false);
 
-    // Physics body
+    // Scale ship up 20%
+    this.setScale(1.2);
+
+    // Physics body (scaled to match visual size)
     scene.physics.add.existing(this);
-    this.body.setCircle(14, -14, -14);
+    this.body.setCircle(17, -17, -17);
     this.body.setMaxVelocity(PLAYER_DEFAULTS.maxSpeed);
     this.body.setDrag(PLAYER_DEFAULTS.drag);
     this.body.setCollideWorldBounds(true);

@@ -86,6 +86,14 @@ export const STORY_BEATS = [
     lines: ["Nice haul! I can already think of ten things to build with that."]
   },
   {
+    id: 'bark_fuel_half',
+    type: 'bark',
+    trigger: 'fuel_below_50',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Fuel's at half, Pax. Might wanna keep an eye on that."]
+  },
+  {
     id: 'bark_low_fuel',
     type: 'bark',
     trigger: 'fuel_below_20',

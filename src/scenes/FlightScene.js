@@ -111,21 +111,21 @@ export default class FlightScene extends Phaser.Scene {
     for (let i = 0; i < 4; i++) {
       const y = 12 + i * 20;
       this.barLabels.push(this.add.text(10, y, barConfig[i].label, {
-        fontSize: '14px', fontFamily: 'monospace', color: barConfig[i].lc,
+        fontSize: '16px', fontFamily: 'monospace', color: barConfig[i].lc,
       }).setScrollFactor(0).setDepth(501));
-      this.barValues.push(this.add.text(172, y, '', {
-        fontSize: '13px', fontFamily: 'monospace', color: '#888888',
+      this.barValues.push(this.add.text(178, y, '', {
+        fontSize: '15px', fontFamily: 'monospace', color: '#888888',
       }).setScrollFactor(0).setDepth(501));
     }
 
     this.sysInfoTexts = [
-      this.add.text(14, 0, '', { fontSize: '12px', fontFamily: 'monospace', color: '#00d4ff' }).setScrollFactor(0).setDepth(501),
-      this.add.text(14, 0, '', { fontSize: '12px', fontFamily: 'monospace', color: '#ffffff' }).setScrollFactor(0).setDepth(501),
-      this.add.text(14, 0, '', { fontSize: '12px', fontFamily: 'monospace', color: '#e74c3c' }).setScrollFactor(0).setDepth(501),
+      this.add.text(14, 0, '', { fontSize: '15px', fontFamily: 'monospace', color: '#00d4ff' }).setScrollFactor(0).setDepth(501),
+      this.add.text(14, 0, '', { fontSize: '15px', fontFamily: 'monospace', color: '#ffffff' }).setScrollFactor(0).setDepth(501),
+      this.add.text(14, 0, '', { fontSize: '15px', fontFamily: 'monospace', color: '#e74c3c' }).setScrollFactor(0).setDepth(501),
     ];
 
     this.controlsText = this.add.text(0, 0, '[W] Thrust  [Mouse] Aim  [A/D] Strafe  [M] Map  [E] Warp  [F] Dock  [TAB] Inv', {
-      fontSize: '10px', fontFamily: 'monospace', color: '#444444',
+      fontSize: '12px', fontFamily: 'monospace', color: '#444444',
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(501);
 
     // Version string (bottom-right, dim)
@@ -148,7 +148,7 @@ export default class FlightScene extends Phaser.Scene {
 
     // Bark system
     this.barkText = this.add.text(0, 0, '', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#87CEEB',
+      fontSize: '16px', fontFamily: 'monospace', color: '#87CEEB',
       backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 12, y: 6 },
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(520).setVisible(false);
     this.barkTimer = null;
@@ -158,7 +158,7 @@ export default class FlightScene extends Phaser.Scene {
     this.transGfx = this.add.graphics().setScrollFactor(0);
     this.transContainer.add(this.transGfx);
     this.transText = this.add.text(0, 0, '', {
-      fontSize: '12px', fontFamily: 'monospace', color: '#33ff66',
+      fontSize: '16px', fontFamily: 'monospace', color: '#33ff66',
       padding: { x: 14, y: 8 },
     }).setOrigin(0.5, 0).setScrollFactor(0);
     this.transContainer.add(this.transText);
@@ -324,22 +324,45 @@ export default class FlightScene extends Phaser.Scene {
     const g = this.staticEntityGfx; g.clear();
     for (const p of this.planets) {
       const c = Phaser.Display.Color.HexStringToColor(p.type.color).color;
-      g.fillStyle(c); g.fillCircle(p.x, p.y, p.radius);
-      g.fillStyle(0xffffff, 0.15); g.fillCircle(p.x - p.radius * 0.25, p.y - p.radius * 0.25, p.radius * 0.6);
-      const label = p.isHub ? 'Zion' : p.type.name;
-      this.labelTexts.push(this.add.text(p.x, p.y + p.radius + 12, label, {
-        fontSize: '10px', fontFamily: 'monospace', color: p.isHub ? '#2ecc71' : '#aaa',
+      const r = p.radius;
+      const isZion = p.isHub;
+
+      // 1. Atmosphere glow
+      g.fillStyle(c, isZion ? 0.25 : 0.15);
+      g.fillCircle(p.x, p.y, r * 1.3);
+
+      // 2. Planet body
+      g.fillStyle(c, 1.0);
+      g.fillCircle(p.x, p.y, r);
+
+      // 3. Shadow crescent (dark side)
+      g.fillStyle(0x000000, 0.25);
+      g.fillCircle(p.x + r * 0.2, p.y + r * 0.1, r * 0.95);
+
+      // 4. Highlight (bright spot)
+      g.fillStyle(0xffffff, 0.2);
+      g.fillCircle(p.x - r * 0.3, p.y - r * 0.3, r * 0.4);
+
+      // 5. Extra glow for Zion
+      if (isZion) {
+        g.fillStyle(c, 0.08);
+        g.fillCircle(p.x, p.y, r * 1.6);
+      }
+
+      const label = isZion ? 'Zion' : p.type.name;
+      this.labelTexts.push(this.add.text(p.x, p.y + r + 14, label, {
+        fontSize: '12px', fontFamily: 'monospace', color: isZion ? '#2ecc71' : '#aaa',
       }).setOrigin(0.5, 0).setDepth(22));
     }
     for (const s of this.stations) {
       this.labelTexts.push(this.add.text(s.x, s.y + s.size + 12, s.name, {
-        fontSize: '9px', fontFamily: 'monospace', color: '#00d4ff',
+        fontSize: '12px', fontFamily: 'monospace', color: '#00d4ff',
       }).setOrigin(0.5, 0).setDepth(22));
     }
     for (const ga of this.gates) {
       this.labelTexts.push(this.add.text(ga.x, ga.y + ga.size + 12,
         ga.targetName + (ga.isDungeon ? ' \u26A0' : ''), {
-        fontSize: '9px', fontFamily: 'monospace', color: ga.isDungeon ? '#ff00ff' : '#00d4ff',
+        fontSize: '12px', fontFamily: 'monospace', color: ga.isDungeon ? '#ff00ff' : '#00d4ff',
       }).setOrigin(0.5, 0).setDepth(22).setAlpha(0.7));
     }
   }
@@ -541,6 +564,10 @@ export default class FlightScene extends Phaser.Scene {
     }
 
     // Session-once warnings
+    if (this.player.fuel < this.player.maxFuel * 0.5 && !this.sessionTriggers.has('fuel_half')) {
+      this.sessionTriggers.add('fuel_half');
+      this.fireBark('fuel_below_50');
+    }
     if (this.player.fuel < this.player.maxFuel * 0.2 && !this.sessionTriggers.has('fuel_warned')) {
       this.sessionTriggers.add('fuel_warned');
       this.fireBark('fuel_below_20');
@@ -556,6 +583,9 @@ export default class FlightScene extends Phaser.Scene {
 
     // Idle barks
     this.checkIdleBark();
+
+    // Transmission typewriter
+    this.updateTransmissionTypewriter(delta);
 
     // Animated entities
     this.drawAnimatedEntities(time);
@@ -743,67 +773,108 @@ export default class FlightScene extends Phaser.Scene {
     this.transCurrentBeat = beat;
     this.transLineIndex = 0;
     this.transDismissable = false;
+    this.transTypewriterChars = 0;
+    this.transTypewriterDone = false;
 
     const isMother = beat.speaker === 'M.O.T.H.E.R.';
     const isOutrider = beat.speaker === 'outrider';
     const color = isMother ? '#f39c12' : isOutrider ? '#2ecc71' : '#33ff66';
-    const borderColor = isMother ? 0xf39c12 : isOutrider ? 0x2ecc71 : 0x33ff66;
+    this.transBorderColor = isMother ? 0xf39c12 : isOutrider ? 0x2ecc71 : 0x33ff66;
+    this.transSpeakerLabel = isMother ? '\u25C8 M.O.T.H.E.R.' : '\u25C8 INCOMING';
 
     this.transText.setColor(color);
 
     if (isMother) this.sound_mgr.playMotherHum();
     else this.sound_mgr.playTransmissionStatic();
 
-    this.transContainer.setVisible(true);
-    this._showTransmissionLine(beat, borderColor, W);
+    this.transContainer.setVisible(true).setAlpha(1);
+    this._startTransmissionLine();
   }
 
-  _showTransmissionLine(beat, borderColor, W) {
-    if (this.transLineIndex >= beat.lines.length) {
-      this.tweens.add({ targets: this.transContainer, alpha: 0, duration: 400,
-        onComplete: () => {
-          this.transContainer.setVisible(false).setAlpha(1);
-          this.transCurrentBeat = null;
-          this.textQueue.dismiss();
-        }
+  _startTransmissionLine() {
+    const beat = this.transCurrentBeat;
+    if (!beat || this.transLineIndex >= beat.lines.length) {
+      // All lines done — auto-dismiss after 2s
+      if (this.transTimer) this.transTimer.remove();
+      this.transTimer = this.time.delayedCall(2000, () => {
+        this.tweens.add({ targets: this.transContainer, alpha: 0, duration: 400,
+          onComplete: () => {
+            this.transContainer.setVisible(false).setAlpha(1);
+            this.transCurrentBeat = null;
+            this.textQueue.dismiss();
+          }
+        });
       });
       return;
     }
 
-    const line = beat.lines[this.transLineIndex];
-    const speakerLabel = beat.speaker === 'M.O.T.H.E.R.' ? '\u25C8 M.O.T.H.E.R.' : '\u25C8 INCOMING';
-    this.transText.setText(speakerLabel + '\n' + line);
-    this.transText.setPosition(W / 2, 40);
+    this.transFullLine = beat.lines[this.transLineIndex];
+    this.transTypewriterChars = 0;
+    this.transTypewriterDone = false;
+    this.transDismissable = true;
 
+    // Show speaker label immediately, start typewriter
+    const W = this.cameras.main.width;
+    this.transText.setText(this.transSpeakerLabel + '\n');
+    this.transText.setPosition(W / 2, 40);
+    this._drawTransmissionBox(W);
+  }
+
+  // Called from FlightScene update loop
+  updateTransmissionTypewriter(delta) {
+    if (!this.transCurrentBeat || this.transTypewriterDone) return;
+
+    const TRANS_CHARS_PER_SEC = 25;
+    this.transTypewriterChars += TRANS_CHARS_PER_SEC * (delta / 1000);
+    const chars = Math.min(Math.floor(this.transTypewriterChars), this.transFullLine.length);
+    const W = this.cameras.main.width;
+    this.transText.setText(this.transSpeakerLabel + '\n' + this.transFullLine.substring(0, chars));
+    this.transText.setPosition(W / 2, 40);
+    this._drawTransmissionBox(W);
+
+    if (chars >= this.transFullLine.length) {
+      this.transTypewriterDone = true;
+      // Auto-advance to next line after 1.5s pause
+      if (this.transTimer) this.transTimer.remove();
+      this.transTimer = this.time.delayedCall(1500, () => {
+        this.transLineIndex++;
+        this._startTransmissionLine();
+      });
+    }
+  }
+
+  _drawTransmissionBox(W) {
     this.transGfx.clear();
     const bounds = this.transText.getBounds();
     const pad = 12;
     this.transGfx.fillStyle(0x000000, 0.85);
     this.transGfx.fillRect(bounds.x - pad, bounds.y - pad, bounds.width + pad * 2, bounds.height + pad * 2);
-    this.transGfx.lineStyle(1, borderColor, 0.6);
+    this.transGfx.lineStyle(1, this.transBorderColor, 0.6);
     this.transGfx.strokeRect(bounds.x - pad, bounds.y - pad, bounds.width + pad * 2, bounds.height + pad * 2);
-
-    this.transContainer.setAlpha(0);
-    this.tweens.add({ targets: this.transContainer, alpha: 1, duration: 200 });
-
-    this.transDismissable = true;
-
-    if (this.transTimer) this.transTimer.remove();
-    this.transTimer = this.time.delayedCall(2500, () => {
-      this.advanceTransmission();
-    });
   }
 
   advanceTransmission() {
     if (!this.transCurrentBeat) return;
     if (this.transTimer) this.transTimer.remove();
-    this.transLineIndex++;
-    const W = this.cameras.main.width;
-    const beat = this.transCurrentBeat;
-    const isMother = beat.speaker === 'M.O.T.H.E.R.';
-    const isOutrider = beat.speaker === 'outrider';
-    const borderColor = isMother ? 0xf39c12 : isOutrider ? 0x2ecc71 : 0x33ff66;
-    this._showTransmissionLine(beat, borderColor, W);
+
+    if (!this.transTypewriterDone) {
+      // Mid-typewriter: complete current line instantly
+      this.transTypewriterChars = this.transFullLine.length;
+      this.transTypewriterDone = true;
+      const W = this.cameras.main.width;
+      this.transText.setText(this.transSpeakerLabel + '\n' + this.transFullLine);
+      this.transText.setPosition(W / 2, 40);
+      this._drawTransmissionBox(W);
+      // Auto-advance after 1.5s
+      this.transTimer = this.time.delayedCall(1500, () => {
+        this.transLineIndex++;
+        this._startTransmissionLine();
+      });
+    } else {
+      // Line complete: advance to next
+      this.transLineIndex++;
+      this._startTransmissionLine();
+    }
   }
 
   // ========== NPC DOCKING / HUB LANDING ==========
@@ -987,7 +1058,11 @@ export default class FlightScene extends Phaser.Scene {
   tryWarp() { if (this.nearGate && !this.invOpen && !this.dialogueActive) this.startWarp(this.nearGate); }
 
   startWarp(gateData) {
-    if (gateData.isDungeon || this.player.fuel < 10) return;
+    if (gateData.isDungeon) {
+      this.fireBark('near_dungeon_gate');
+      return;
+    }
+    if (this.player.fuel < 10) return;
     this.player.fuel = Math.max(0, this.player.fuel - 10);
     this.sound_mgr.playWarpWhoosh();
     this.sound_mgr.stopAll();

@@ -22,13 +22,13 @@ export default class TitleScene extends Phaser.Scene {
     }
 
     // Title
-    this.add.text(W / 2, H * 0.28, 'P.E.S.T.S.', {
+    this.add.text(W / 2, H * 0.30, 'P.E.S.T.S.', {
       fontSize: '42px', fontFamily: 'monospace', color: '#00d4ff', fontStyle: 'bold',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5, 0.5);
 
-    this.add.text(W / 2, H * 0.37, 'A Space Western', {
+    this.add.text(W / 2, H * 0.38, 'A Space Western', {
       fontSize: '14px', fontFamily: 'monospace', color: '#f39c12',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5, 0.5);
 
     // Decorative ship
     const ship = this.add.graphics();
@@ -81,7 +81,7 @@ export default class TitleScene extends Phaser.Scene {
       fontSize: '10px', fontFamily: 'monospace', color: '#555555',
     }).setOrigin(0.5);
 
-    this.add.text(W / 2, H - 20, 'v0.4.0 — P.E.S.T.S.', {
+    this.add.text(W / 2, H - 20, 'v0.4.1 — P.E.S.T.S.', {
       fontSize: '9px', fontFamily: 'monospace', color: '#333333',
     }).setOrigin(0.5);
 

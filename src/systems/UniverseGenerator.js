@@ -96,14 +96,20 @@ export function generateSystem(sysData, universeData) {
     });
   }
 
-  // Asteroids
-  const numAsteroids = rng.int(20, 60);
-  for (let i = 0; i < numAsteroids; i++) {
+  // Asteroids — density scales by region
+  const maxByRegion = { CORE: 25, FRONT: 35, OUTER: 45, RIFT: 55 };
+  const maxAsteroids = maxByRegion[sysData.region.key] || 35;
+  const targetAsteroids = rng.int(10, maxAsteroids);
+  for (let i = 0; i < targetAsteroids; i++) {
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(300, 1200);
+    const ax = system.star.x + Math.cos(angle) * dist + rng.int(-60, 60);
+    const ay = system.star.y + Math.sin(angle) * dist + rng.int(-60, 60);
+    // Minimum spacing: skip if too close to existing asteroid
+    const tooClose = system.asteroids.some(e => Math.hypot(ax - e.x, ay - e.y) < 40);
+    if (tooClose) continue;
     system.asteroids.push({
-      x: system.star.x + Math.cos(angle) * dist + rng.int(-60, 60),
-      y: system.star.y + Math.sin(angle) * dist + rng.int(-60, 60),
+      x: ax, y: ay,
       size: rng.int(10, 23),
       color: rng.pick(['#8B7355', '#A0A0A0', '#6B6B6B', '#9B7653']),
       rotation: rng.float(0, Math.PI * 2),

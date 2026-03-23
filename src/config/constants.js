@@ -70,8 +70,8 @@ export const DANGER_COLORS = [
 
 // --- PLAYER DEFAULTS ---
 export const PLAYER_DEFAULTS = {
-  thrust: 200,      // forward acceleration px/s²
-  reverse: 100,     // backward acceleration px/s²
+  thrust: 250,      // forward acceleration px/s² (was 200, +25%)
+  reverse: 125,     // backward acceleration px/s² (was 100, +25%)
   strafe: 120,      // side acceleration px/s²
   maxSpeed: 300,    // velocity cap px/s
   drag: 165,        // Arcade physics drag value (was 150, +10% less bouncy)
@@ -83,7 +83,7 @@ export const PLAYER_DEFAULTS = {
 };
 
 // --- BUILD INFO ---
-export const BUILD_VERSION = 'v0.4.0';
+export const BUILD_VERSION = 'v0.4.1';
 export const BUILD_DATE = '2026-03-23';
 
 // --- COLORS ---
