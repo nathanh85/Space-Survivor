@@ -94,7 +94,7 @@ export default class GalaxyMapScene extends Phaser.Scene {
     this._sysLabels = {};
     for (const s of this.universe) {
       const label = this.add.text(0, 0, s.name || '', {
-        fontSize: '6px', fontFamily: FONT, color: '#ffffff',
+        fontSize: '8px', fontFamily: FONT, color: '#ffffff',
         align: 'center',
       }).setOrigin(0.5).setDepth(6).setVisible(false);
       this._sysLabels[s.id] = label;
@@ -287,8 +287,11 @@ export default class GalaxyMapScene extends Phaser.Scene {
         g.fillCircle(pos.x, pos.y, 18);
       }
 
-      // System dot
-      const dotSize = isCur ? 8 : 5;
+      // System dot — size varies by content (planets + stations)
+      const numPlanets = s.numPlanets || 2;
+      const hasStation = s.hasStation || false;
+      const baseDot = 3 + Math.min(numPlanets, 5);
+      const dotSize = isCur ? baseDot + 3 : baseDot;
       g.fillStyle(regionColor, isVis ? 1 : 0.45);
       g.fillCircle(pos.x, pos.y, dotSize);
 
@@ -304,6 +307,12 @@ export default class GalaxyMapScene extends Phaser.Scene {
         else if (danger >= 4) dotColor = 0xf39c12;  // orange
         g.fillStyle(dotColor, isVis ? 0.8 : 0.3);
         g.fillCircle(dotStartX + d * dotSpacing, dotY, 1.5);
+      }
+
+      // Station indicator (small square)
+      if (hasStation) {
+        g.fillStyle(0x00d4ff, 0.6);
+        g.fillRect(pos.x - dotSize - 6, pos.y - 2, 4, 4);
       }
 
       // Dungeon indicator

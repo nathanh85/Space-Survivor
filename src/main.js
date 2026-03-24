@@ -13,8 +13,9 @@ import HubScene from './scenes/HubScene.js';
 
 const config = {
   type: Phaser.CANVAS,
-  width: 1600,
-  height: 1000,
+  width: 1760,
+  height: 1100,
+  resolution: window.devicePixelRatio || 1,
   backgroundColor: '#050510',
   render: {
     pixelArt: true,

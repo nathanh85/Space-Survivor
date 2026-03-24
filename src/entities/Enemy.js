@@ -39,6 +39,10 @@ export default class Enemy {
     this.hpBar = scene.add.graphics().setDepth(96);
     this.flashTimer = 0;
 
+    // Spawn fade-in (invulnerable during fade)
+    this.spawnFade = 500;
+    this.gfx.setAlpha(0);
+
     // Patrol target
     this.patrolTarget = { x: x + Math.random() * 400 - 200, y: y + Math.random() * 400 - 200 };
   }
@@ -46,6 +50,20 @@ export default class Enemy {
   update(time, delta, playerX, playerY, enemyProjectiles) {
     if (!this.alive) return;
     const dt = delta / 1000;
+
+    // Spawn fade-in
+    if (this.spawnFade > 0) {
+      this.spawnFade -= delta;
+      const alpha = 1 - Math.max(0, this.spawnFade) / 500;
+      this.gfx.setAlpha(alpha);
+      this.hpBar.setAlpha(alpha);
+      if (this.spawnFade <= 0) {
+        this.gfx.setAlpha(1);
+        this.hpBar.setAlpha(1);
+      }
+      return; // Don't act during fade-in
+    }
+
     const dist = Phaser.Math.Distance.Between(this.x, this.y, playerX, playerY);
 
     // State transitions
@@ -142,13 +160,18 @@ export default class Enemy {
       4, 2, 0xe74c3c
     ).setDepth(94);
     this.scene.physics.add.existing(proj);
+    proj.setRotation(angle);
+    proj._damage = this.damage;
+
+    // Add to group FIRST, then set velocity (group.add can reset body props)
+    group.add(proj);
+    proj.body.setDrag(0);
+    proj.body.setMaxVelocity(9999);
+    proj.body.setCollideWorldBounds(false);
     proj.body.setVelocity(
       Math.cos(angle) * this.config.projectileSpeed,
       Math.sin(angle) * this.config.projectileSpeed
     );
-    proj.setRotation(angle);
-    proj._damage = this.damage;
-    group.add(proj);
 
     // Despawn after 2s
     this.scene.time.delayedCall(2000, () => {

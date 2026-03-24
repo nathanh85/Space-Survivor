@@ -246,6 +246,34 @@ export const STORY_BEATS = [
     lines: ["We're burnin' daylight! ...Well, starlight. Same thing out here."]
   },
 
+  // === TRANSMISSION REACTION BARKS ===
+  {
+    id: 'bark_react_mother',
+    type: 'bark',
+    trigger: 'after_mother_transmission',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Well that's real friendly. 'Have a productive day.' ...Yeesh."]
+  },
+  {
+    id: 'bark_react_outrider',
+    type: 'bark',
+    trigger: 'after_outrider_transmission',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Outriders... they sound like our kinda people, Pax."]
+  },
+
+  // === PLANET PROXIMITY BARK ===
+  {
+    id: 'bark_near_planet',
+    type: 'bark',
+    trigger: 'near_planet',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Interesting planet... but we can't land here yet. Maybe once we upgrade The Dustkicker."]
+  },
+
   // === COMBAT BARKS ===
   {
     id: 'bark_enemy_destroyed',

@@ -85,7 +85,11 @@ export default class FlightScene extends Phaser.Scene {
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
       w: 'W', a: 'A', s: 'S', d: 'D', space: 'SPACE',
     });
-    this.input.keyboard.on('keydown-M', () => { if (!this.dialogueActive) this.openGalaxyMap(); });
+    this.input.keyboard.on('keydown-M', () => {
+      if (this.dialogueActive) return;
+      if (this.invOpen) this.toggleInventory(); // close inv first
+      this.openGalaxyMap();
+    });
     this.input.keyboard.on('keydown-E', () => { if (!this.dialogueActive) this.tryWarp(); });
     this.input.keyboard.on('keydown-F', () => { if (!this.dialogueActive) this.tryDockOrLand(); });
     this.input.keyboard.on('keydown-TAB', (e) => { e.preventDefault(); if (!this.dialogueActive) this.toggleInventory(); });
@@ -177,8 +181,9 @@ export default class FlightScene extends Phaser.Scene {
 
     // Bark system
     this.barkText = this.add.text(0, 0, '', {
-      fontSize: '10px', fontFamily: FONT, color: '#87CEEB',
+      fontSize: '8px', fontFamily: FONT, color: '#87CEEB',
       backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 12, y: 6 },
+      wordWrap: { width: 500 }, align: 'center',
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(520).setVisible(false);
     this.barkTimer = null;
 
@@ -297,7 +302,13 @@ export default class FlightScene extends Phaser.Scene {
     this.drawOrbits(sys);
     this.drawStaticEntities();
 
-    this.player.setPosition(sys.star.x, sys.star.y - 180);
+    // Spawn at safe distance from star, random direction
+    const spawnAngle = Math.random() * Math.PI * 2;
+    const spawnDist = (sys.star.radius || 50) * 4 + 200;
+    this.player.setPosition(
+      sys.star.x + Math.cos(spawnAngle) * spawnDist,
+      sys.star.y + Math.sin(spawnAngle) * spawnDist
+    );
     if (this.player.body) this.player.body.setVelocity(0, 0);
 
     // Warp arrival cooldown: suppress auto-barks for 3s
@@ -311,12 +322,16 @@ export default class FlightScene extends Phaser.Scene {
     // M.O.T.H.E.R. transmission on first new system visit (one-shot, 8s after arrival)
     if (isFirstVisit && this.visited.size > 1) {
       this.time.delayedCall(8000, () => this.triggerStoryBeat('enter_system_first'));
+      // Pepper reacts to M.O.T.H.E.R. after transmission finishes (~20s)
+      this.time.delayedCall(20000, () => this.fireBark('after_mother_transmission'));
     }
 
     // Outrider transmission on first Frontier entry (13s after arrival — after M.O.T.H.E.R.)
     if (isFirstVisit && sysData.region.key === 'FRONT' && !this.enteredFrontier) {
       this.enteredFrontier = true;
       this.time.delayedCall(13000, () => this.triggerStoryBeat('enter_frontier_first'));
+      // Pepper reacts to Outriders (~25s)
+      this.time.delayedCall(25000, () => this.fireBark('after_outrider_transmission'));
     }
 
     // High danger bark (5s after arrival)
@@ -636,6 +651,20 @@ export default class FlightScene extends Phaser.Scene {
       if (p.isHub && Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 100) {
         this.nearPlanetZion = true;
         break;
+      }
+    }
+
+    // Non-Zion planet proximity bark (once per planet type)
+    for (const p of this.planets) {
+      if (p.isHub) continue;
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y);
+      if (dist < 80) {
+        const typeKey = 'near_planet_' + (p.type?.name || 'unknown');
+        if (!this.sessionTriggers.has(typeKey)) {
+          this.sessionTriggers.add(typeKey);
+          this.fireBark('near_planet');
+          break;
+        }
       }
     }
 
@@ -1051,8 +1080,18 @@ export default class FlightScene extends Phaser.Scene {
 
     // Fire weapon on left click (not mining, not dialogue)
     if (this.input.activePointer.isDown && !this.dialogueActive && !this.invOpen && !this.dialogueUI.isOpen) {
-      // Only fire if not near a mineable asteroid (prefer mining over shooting)
-      if (!this.miningAsteroid) {
+      // Check if click is near a mineable asteroid — mining takes priority
+      let nearMineable = !!this.miningAsteroid;
+      if (!nearMineable) {
+        const wp = this.cameras.main.getWorldPoint(this.input.activePointer.x, this.input.activePointer.y);
+        for (const a of this.asteroids) {
+          if (a.mined) continue;
+          const dc = Phaser.Math.Distance.Between(wp.x, wp.y, a.x, a.y);
+          const dp = Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y);
+          if (dc < 35 && dp < 120) { nearMineable = true; break; }
+        }
+      }
+      if (!nearMineable) {
         const proj = this.weaponSystem.fire(time, this.player.x, this.player.y, this.player.shipAngle);
         if (proj) {
           this.sound_mgr.playLaser();
@@ -1063,7 +1102,7 @@ export default class FlightScene extends Phaser.Scene {
 
     // Check player projectiles vs enemies
     for (const enemy of this.enemyManager.enemies) {
-      if (!enemy.alive) continue;
+      if (!enemy.alive || enemy.spawnFade > 0) continue;
       this.weaponSystem.projectiles.getChildren().forEach(proj => {
         if (!proj || !proj.active || !enemy.body || !enemy.body.active) return;
         const dist = Phaser.Math.Distance.Between(proj.x, proj.y, enemy.x, enemy.y);
@@ -1291,7 +1330,7 @@ export default class FlightScene extends Phaser.Scene {
 
     const t1 = this.add.text(W / 2, H * 0.35,
       "M.O.T.H.E.R.'S LAW ENFORCEMENT\nHAS PROCESSED YOUR VESSEL.", {
-      fontSize: '14px', fontFamily: FONT, color: '#e74c3c',
+      fontSize: '16px', fontFamily: FONT, color: '#e74c3c',
       align: 'center', lineSpacing: 8,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
 
@@ -1538,14 +1577,10 @@ export default class FlightScene extends Phaser.Scene {
           const rc = Phaser.Display.Color.HexStringToColor(res.color).color;
           g.lineStyle(isSelected ? 2 : 1.5, rc, isSelected ? 1 : 0.8);
           g.strokeRect(sx, sy, cs, cs);
-          g.fillStyle(rc, 0.6); g.fillRect(sx + 12, sy + 10, 24, 20);
+          g.fillStyle(rc, 0.6); g.fillRect(sx + 8, sy + 6, cs - 16, cs - 18);
           this.invTexts.push(this.add.text(sx + cs - 3, sy + cs - 3, '' + slot.count, {
-            fontSize: '9px', fontFamily: FONT, color: '#fff', stroke: '#000', strokeThickness: 2,
+            fontSize: '8px', fontFamily: FONT, color: '#fff', stroke: '#000', strokeThickness: 2,
           }).setOrigin(1, 1).setScrollFactor(0).setDepth(601));
-          const nm = res.name.length > 7 ? res.name.substring(0, 6) + '.' : res.name;
-          this.invTexts.push(this.add.text(sx + cs / 2, sy + cs - 3, nm, {
-            fontSize: '7px', fontFamily: FONT, color: '#aaa',
-          }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(601));
         }
       } else { g.lineStyle(1, 0x333344, 0.4); g.strokeRect(sx, sy, cs, cs); }
     }
