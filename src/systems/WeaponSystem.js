@@ -33,9 +33,19 @@ export default class WeaponSystem {
     const proj = this.scene.add.rectangle(spawnX, spawnY, 4, 2, this.weapon.projectileColor)
       .setDepth(95).setRotation(angle);
     this.scene.physics.add.existing(proj);
-    proj.body.setVelocity(cos * this.weapon.projectileSpeed, sin * this.weapon.projectileSpeed);
-    proj._damage = this.weapon.damage;
+
+    // Add to group FIRST, then set velocity (group.add can reset body props)
     this.projectiles.add(proj);
+
+    // Ensure no drag/damping on projectile
+    proj.body.setDrag(0);
+    proj.body.setMaxVelocity(9999);
+    proj.body.setCollideWorldBounds(false);
+
+    // NOW set velocity — after group add
+    proj.body.setVelocity(cos * this.weapon.projectileSpeed, sin * this.weapon.projectileSpeed);
+
+    proj._damage = this.weapon.damage;
 
     // Despawn timer
     this.scene.time.delayedCall(this.weapon.projectileLifetime, () => {

@@ -41,6 +41,7 @@ export default class FlightScene extends Phaser.Scene {
     this.inventory = new InventorySystem();
     this.miningAsteroid = null;
     this.invOpen = false;
+    this._selectedInvSlot = null;
     this.dialogueActive = false;
 
     // Story state
@@ -91,7 +92,10 @@ export default class FlightScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-I', () => { if (!this.dialogueActive) this.toggleInventory(); });
 
     // Init audio on first interaction
-    this.input.on('pointerdown', () => this.sound_mgr.ensureContext(), this);
+    this.input.on('pointerdown', (pointer) => {
+      this.sound_mgr.ensureContext();
+      if (this.invOpen) this.handleInvClick(pointer);
+    }, this);
 
     // World + Camera
     this.physics.world.setBounds(0, 0, SYS_W, SYS_H);
@@ -214,12 +218,28 @@ export default class FlightScene extends Phaser.Scene {
     // Combat collision setup
     this.setupCombatCollisions();
 
-    // Fade in
-    this.cameras.main.fadeIn(500, 0, 0, 0);
-
-    // Fire game_start cutscene
+    // Start blacked out — cutscene fires first, then fade in after
+    this.cameras.main.setAlpha(0);
     this.lastActivityTime = Date.now();
-    this.time.delayedCall(500, () => this.triggerStoryBeat('game_start'));
+
+    // Fire game_start cutscene immediately
+    this.time.delayedCall(100, () => {
+      const beat = getStoryBeat('game_start');
+      if (beat && !this.firedTriggers.has(beat.id)) {
+        this.firedTriggers.add(beat.id);
+        this.scene.launch('CutsceneScene', { beatId: beat.id });
+        this.scene.pause();
+        // When cutscene ends, FlightScene resumes — fade in there
+        this.events.on('resume', () => {
+          this.cameras.main.setAlpha(1);
+          this.cameras.main.fadeIn(800, 0, 0, 0);
+        });
+      } else {
+        // No cutscene (returning player) — just fade in
+        this.cameras.main.setAlpha(1);
+        this.cameras.main.fadeIn(500, 0, 0, 0);
+      }
+    });
   }
 
   // ========== SYSTEM MANAGEMENT ==========
@@ -280,26 +300,29 @@ export default class FlightScene extends Phaser.Scene {
     this.player.setPosition(sys.star.x, sys.star.y - 180);
     if (this.player.body) this.player.body.setVelocity(0, 0);
 
-    // Bark: "New system!" on each new system (not starting)
+    // Warp arrival cooldown: suppress auto-barks for 3s
+    this.warpArrivalTime = Date.now();
+
+    // Bark: "New system!" on each new system (delayed 3s after arrival)
     if (isFirstVisit && this.visited.size > 1) {
-      this.fireBark('enter_new_system');
+      this.time.delayedCall(3000, () => this.fireBark('enter_new_system'));
     }
 
-    // M.O.T.H.E.R. transmission on first new system visit (one-shot)
+    // M.O.T.H.E.R. transmission on first new system visit (one-shot, 8s after arrival)
     if (isFirstVisit && this.visited.size > 1) {
-      this.time.delayedCall(1500, () => this.triggerStoryBeat('enter_system_first'));
+      this.time.delayedCall(8000, () => this.triggerStoryBeat('enter_system_first'));
     }
 
-    // Outrider transmission on first Frontier entry (queued after M.O.T.H.E.R.)
+    // Outrider transmission on first Frontier entry (13s after arrival — after M.O.T.H.E.R.)
     if (isFirstVisit && sysData.region.key === 'FRONT' && !this.enteredFrontier) {
       this.enteredFrontier = true;
-      this.time.delayedCall(4500, () => this.triggerStoryBeat('enter_frontier_first'));
+      this.time.delayedCall(13000, () => this.triggerStoryBeat('enter_frontier_first'));
     }
 
-    // High danger bark
+    // High danger bark (5s after arrival)
     if (sysData.danger >= 6 && !this.perSystemTriggers.has('danger_warned')) {
       this.perSystemTriggers.add('danger_warned');
-      this.time.delayedCall(2000, () => this.fireBark('enter_danger_6plus'));
+      this.time.delayedCall(5000, () => this.fireBark('enter_danger_6plus'));
     }
   }
 
@@ -1259,33 +1282,52 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   showDeathScreen() {
-    const W = this.cameras.main.width;
-    const H = this.cameras.main.height;
+    const W = this.scale.width;
+    const H = this.scale.height;
 
     // Black overlay
-    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000).setScrollFactor(0).setDepth(900);
+    const overlay = this.add.rectangle(W / 2, H / 2, W * 2, H * 2, 0x000000)
+      .setScrollFactor(0).setDepth(900);
 
-    const t1 = this.add.text(W / 2, H * 0.35, "M.O.T.H.E.R.'S LAW ENFORCEMENT\nHAS PROCESSED YOUR VESSEL", {
-      fontSize: '10px', fontFamily: FONT, color: '#e74c3c',
-      align: 'center',
+    const t1 = this.add.text(W / 2, H * 0.35,
+      "M.O.T.H.E.R.'S LAW ENFORCEMENT\nHAS PROCESSED YOUR VESSEL.", {
+      fontSize: '14px', fontFamily: FONT, color: '#e74c3c',
+      align: 'center', lineSpacing: 8,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
 
-    const t2 = this.add.text(W / 2, H * 0.55, "Released at nearest station.\nTry not to let it happen again.", {
-      fontSize: '8px', fontFamily: FONT, color: '#888888',
-      align: 'center',
+    const t2 = this.add.text(W / 2, H * 0.55,
+      "You've been released at the nearest station.\nTry not to let it happen again.", {
+      fontSize: '10px', fontFamily: FONT, color: '#888888',
+      align: 'center', lineSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
 
     this.tweens.add({ targets: t1, alpha: 1, duration: 800 });
-    this.time.delayedCall(1000, () => {
+    this.time.delayedCall(1200, () => {
       this.tweens.add({ targets: t2, alpha: 1, duration: 800 });
     });
 
-    // Respawn after 4s
-    this.time.delayedCall(4000, () => {
+    // Skip on click/SPACE or auto-respawn after 5s
+    const cleanup = () => {
       overlay.destroy();
       t1.destroy();
       t2.destroy();
       this.respawnPlayer();
+    };
+
+    const skipHandler = () => {
+      this.input.off('pointerdown', skipHandler);
+      this.input.keyboard.off('keydown-SPACE', skipHandler);
+      cleanup();
+    };
+
+    this.time.delayedCall(1500, () => {
+      this.input.once('pointerdown', skipHandler);
+      this.input.keyboard.once('keydown-SPACE', skipHandler);
+    });
+    this.time.delayedCall(5000, () => {
+      this.input.off('pointerdown', skipHandler);
+      this.input.keyboard.off('keydown-SPACE', skipHandler);
+      if (this.playerDead) cleanup();
     });
   }
 
@@ -1457,7 +1499,7 @@ export default class FlightScene extends Phaser.Scene {
     this.invOpen = !this.invOpen;
     this.invGfx.setVisible(this.invOpen);
     this.sound_mgr.playInventoryWhoosh();
-    if (!this.invOpen) { this.invGfx.clear(); for (const t of this.invTexts) t.destroy(); this.invTexts = []; }
+    if (!this.invOpen) { this.invGfx.clear(); for (const t of this.invTexts) t.destroy(); this.invTexts = []; this._selectedInvSlot = null; }
   }
 
   drawInventory(W, H) {
@@ -1475,15 +1517,27 @@ export default class FlightScene extends Phaser.Scene {
     this.invTexts.push(this.add.text(ox + tw - m, oy + 10, this.inventory.getUsedSlots() + '/' + this.inventory.maxSlots, {
       fontSize: '11px', fontFamily: FONT, color: '#888',
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(601));
+
+    // Track slot positions for click detection
+    this._invSlots = [];
+
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
       const i = r * cols + c, sx = ox + m + c * (cs + pad), sy = oy + m + 24 + r * (cs + pad);
       const slot = this.inventory.slots[i];
-      g.fillStyle(0x111122, 0.9); g.fillRect(sx, sy, cs, cs);
+
+      // Highlight selected slot
+      const isSelected = this._selectedInvSlot === i && slot;
+      g.fillStyle(isSelected ? 0x1a1a3a : 0x111122, 0.9);
+      g.fillRect(sx, sy, cs, cs);
+
+      this._invSlots.push({ x: sx, y: sy, w: cs, h: cs, index: i });
+
       if (slot) {
         const res = RESOURCES[slot.resourceId];
         if (res) {
           const rc = Phaser.Display.Color.HexStringToColor(res.color).color;
-          g.lineStyle(1.5, rc, 0.8); g.strokeRect(sx, sy, cs, cs);
+          g.lineStyle(isSelected ? 2 : 1.5, rc, isSelected ? 1 : 0.8);
+          g.strokeRect(sx, sy, cs, cs);
           g.fillStyle(rc, 0.6); g.fillRect(sx + 12, sy + 10, 24, 20);
           this.invTexts.push(this.add.text(sx + cs - 3, sy + cs - 3, '' + slot.count, {
             fontSize: '9px', fontFamily: FONT, color: '#fff', stroke: '#000', strokeThickness: 2,
@@ -1495,6 +1549,53 @@ export default class FlightScene extends Phaser.Scene {
         }
       } else { g.lineStyle(1, 0x333344, 0.4); g.strokeRect(sx, sy, cs, cs); }
     }
+
+    // Detail panel for selected item
+    if (this._selectedInvSlot != null) {
+      const slot = this.inventory.slots[this._selectedInvSlot];
+      if (slot) {
+        const res = RESOURCES[slot.resourceId];
+        if (res) {
+          const dpx = ox + tw + 8, dpy = oy;
+          const dpw = 180, dph = 120;
+          g.fillStyle(0x0a0a1a, 0.95); g.fillRect(dpx, dpy, dpw, dph);
+          const rc = Phaser.Display.Color.HexStringToColor(res.tier.color).color;
+          g.lineStyle(1.5, rc, 0.6); g.strokeRect(dpx, dpy, dpw, dph);
+
+          this.invTexts.push(this.add.text(dpx + 10, dpy + 10, res.name, {
+            fontSize: '10px', fontFamily: FONT, color: res.tier.color, fontStyle: 'bold',
+          }).setScrollFactor(0).setDepth(601));
+          this.invTexts.push(this.add.text(dpx + 10, dpy + 26, res.tier.name, {
+            fontSize: '7px', fontFamily: FONT, color: '#888',
+          }).setScrollFactor(0).setDepth(601));
+          this.invTexts.push(this.add.text(dpx + 10, dpy + 42, res.description, {
+            fontSize: '7px', fontFamily: FONT, color: '#cccccc',
+            wordWrap: { width: dpw - 20 }, lineSpacing: 4,
+          }).setScrollFactor(0).setDepth(601));
+          this.invTexts.push(this.add.text(dpx + 10, dpy + dph - 22, slot.count + '/' + res.maxStack, {
+            fontSize: '8px', fontFamily: FONT, color: '#aaa',
+          }).setScrollFactor(0).setDepth(601));
+          this.invTexts.push(this.add.text(dpx + dpw - 10, dpy + dph - 22, res.value + ' cr', {
+            fontSize: '8px', fontFamily: FONT, color: '#f1c40f',
+          }).setOrigin(1, 0).setScrollFactor(0).setDepth(601));
+        }
+      }
+    }
+  }
+
+  handleInvClick(pointer) {
+    if (!this.invOpen || !this._invSlots) return;
+    const mx = pointer.x, my = pointer.y;
+    let clicked = false;
+    for (const s of this._invSlots) {
+      if (mx >= s.x && mx <= s.x + s.w && my >= s.y && my <= s.y + s.h) {
+        const slot = this.inventory.slots[s.index];
+        this._selectedInvSlot = slot ? s.index : null;
+        clicked = true;
+        break;
+      }
+    }
+    if (!clicked) this._selectedInvSlot = null;
   }
 
   // ========== WARP / MAP ==========

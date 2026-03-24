@@ -11,22 +11,22 @@ export const RESOURCE_TIERS = {
 
 export const RESOURCES = {
   // Tier 1 — Common (Core Worlds)
-  iron:    { id: 'iron',    name: 'Iron Ore',      tier: RESOURCE_TIERS.COMMON, color: '#A0A0A0', value: 5,   maxStack: 50, description: 'Basic structural metal ore' },
-  carbon:  { id: 'carbon',  name: 'Carbon',        tier: RESOURCE_TIERS.COMMON, color: '#4a4a4a', value: 4,   maxStack: 50, description: 'Fundamental element for composites' },
-  fuel:    { id: 'fuel',    name: 'Hydrogen Fuel',  tier: RESOURCE_TIERS.COMMON, color: '#f1c40f', value: 6,   maxStack: 50, description: 'Standard starship fuel' },
+  iron:    { id: 'iron',    name: 'Iron Ore',      tier: RESOURCE_TIERS.COMMON, color: '#A0A0A0', value: 5,   maxStack: 50, description: "Basic metallic ore. The backbone of any repair job." },
+  carbon:  { id: 'carbon',  name: 'Carbon',        tier: RESOURCE_TIERS.COMMON, color: '#4a4a4a', value: 4,   maxStack: 50, description: "Compressed carbon. Burns clean, builds strong." },
+  fuel:    { id: 'fuel',    name: 'Hydrogen Fuel',  tier: RESOURCE_TIERS.COMMON, color: '#f1c40f', value: 6,   maxStack: 50, description: "Hydrogen fuel cells. Keeps The Dustkicker flying." },
 
   // Tier 2 — Uncommon (Frontier)
-  titanium: { id: 'titanium', name: 'Titanium',     tier: RESOURCE_TIERS.UNCOMMON, color: '#B8C6DB', value: 15, maxStack: 30, description: 'Lightweight armor-grade metal' },
-  plasma:   { id: 'plasma',   name: 'Plasma Gel',    tier: RESOURCE_TIERS.UNCOMMON, color: '#e74c3c', value: 18, maxStack: 30, description: 'Conductive gel for energy systems' },
-  cryo:     { id: 'cryo',     name: 'Cryo Crystals', tier: RESOURCE_TIERS.UNCOMMON, color: '#87CEEB', value: 12, maxStack: 30, description: 'Sub-zero crystalline formations' },
+  titanium: { id: 'titanium', name: 'Titanium',     tier: RESOURCE_TIERS.UNCOMMON, color: '#B8C6DB', value: 15, maxStack: 30, description: "Lightweight alloy. Stronger than iron, twice the price." },
+  plasma:   { id: 'plasma',   name: 'Plasma Gel',    tier: RESOURCE_TIERS.UNCOMMON, color: '#e74c3c', value: 18, maxStack: 30, description: "Superheated gel. Handle with extreme caution." },
+  cryo:     { id: 'cryo',     name: 'Cryo Crystals', tier: RESOURCE_TIERS.UNCOMMON, color: '#87CEEB', value: 12, maxStack: 30, description: "Frozen crystal lattice. Cold enough to burn." },
 
   // Tier 3 — Rare (Outer Rim)
-  darkmatter:  { id: 'darkmatter',  name: 'Dark Matter',  tier: RESOURCE_TIERS.RARE, color: '#8e44ad', value: 50, maxStack: 15, description: 'Condensed dark matter fragments' },
-  neutronium:  { id: 'neutronium',  name: 'Neutronium',   tier: RESOURCE_TIERS.RARE, color: '#2ecc71', value: 55, maxStack: 15, description: 'Ultra-dense neutron star material' },
+  darkmatter:  { id: 'darkmatter',  name: 'Dark Matter',  tier: RESOURCE_TIERS.RARE, color: '#8e44ad', value: 50, maxStack: 15, description: "Nobody knows what it is. Everybody wants it." },
+  neutronium:  { id: 'neutronium',  name: 'Neutronium',   tier: RESOURCE_TIERS.RARE, color: '#2ecc71', value: 55, maxStack: 15, description: "Impossibly dense material. One gram weighs a ton." },
 
   // Tier 4 — Legendary (Dungeon-only)
-  singularity: { id: 'singularity', name: 'Singularity Core', tier: RESOURCE_TIERS.LEGENDARY, color: '#ff00ff', value: 250, maxStack: 5, description: 'Collapsed star fragment with immense energy' },
-  starfrag:    { id: 'starfrag',    name: 'Star Fragment',    tier: RESOURCE_TIERS.LEGENDARY, color: '#FFD700', value: 300, maxStack: 5, description: 'Piece of a dying star, radiates heat' },
+  singularity: { id: 'singularity', name: 'Singularity Core', tier: RESOURCE_TIERS.LEGENDARY, color: '#ff00ff', value: 250, maxStack: 5, description: "A collapsed star in a bottle. Pepper says don't shake it." },
+  starfrag:    { id: 'starfrag',    name: 'Star Fragment',    tier: RESOURCE_TIERS.LEGENDARY, color: '#FFD700', value: 300, maxStack: 5, description: "Fragment of a dead star. Glows warm in your hands." },
 };
 
 // Region distribution — updated weights per v3.1

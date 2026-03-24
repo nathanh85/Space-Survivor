@@ -171,7 +171,7 @@ export const STORY_BEATS = [
     trigger: 'first_enemy_spotted',
     speaker: 'pepper',
     portrait: null,
-    lines: ["Tin Badges! M.O.T.H.E.R.'s patrol drones. They don't look friendly!"]
+    lines: ["Pax, we got company! Those red blips are Tin Badges — M.O.T.H.E.R.'s patrol drones. Shoot 'em before they shoot us!"]
   },
   {
     id: 'bark_combat_callout_1',

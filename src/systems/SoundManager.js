@@ -144,8 +144,17 @@ export default class SoundManager {
   }
 
   playLaser() {
-    this._playTone(1200, 0.05, 'sine', 0.08);
-    this._playTone(900, 0.03, 'square', 0.04);
+    if (!this.ensureContext()) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1200;
+    osc.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.08);
+    gain.gain.value = 0.12;
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+    osc.connect(gain).connect(this.masterGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.1);
   }
 
   playEnemyDeath() {

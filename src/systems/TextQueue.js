@@ -4,7 +4,7 @@
 // ============================================================
 
 const PRIORITY = { bark: 0, transmission: 1, dialogue: 2 };
-const MIN_GAP = 2000; // 2 seconds between auto-triggered messages
+const MIN_GAP = 5000; // 5 seconds between auto-triggered messages
 
 export default class TextQueue {
   constructor() {

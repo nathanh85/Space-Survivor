@@ -3,7 +3,7 @@
 // ============================================================
 
 import Phaser from 'phaser';
-import { UNIVERSE_COLS, UNIVERSE_ROWS, RNG } from '../config/constants.js';
+import { UNIVERSE_COLS, UNIVERSE_ROWS, RNG, FONT } from '../config/constants.js';
 
 const HEX_SIZE = 70;
 const HEX_W = Math.sqrt(3) * HEX_SIZE;
@@ -13,14 +13,6 @@ function hexPosition(col, row) {
   const x = col * HEX_W + (row % 2 === 1 ? HEX_W / 2 : 0);
   const y = row * (HEX_H * 0.75);
   return { x, y };
-}
-
-function getHexNeighbors(col, row) {
-  const isOdd = row % 2 === 1;
-  const offsets = isOdd
-    ? [[0, -1], [1, -1], [-1, 0], [1, 0], [0, 1], [1, 1]]
-    : [[-1, -1], [0, -1], [-1, 0], [1, 0], [-1, 1], [0, 1]];
-  return offsets.map(([dc, dr]) => [col + dc, row + dr]);
 }
 
 function drawHexOutline(gfx, cx, cy, size, color, alpha) {
@@ -51,6 +43,13 @@ function fillHex(gfx, cx, cy, size, color, alpha) {
   gfx.fillPath();
 }
 
+function pointInHex(px, py, cx, cy, size) {
+  const dx = Math.abs(px - cx);
+  const dy = Math.abs(py - cy);
+  if (dx > size * Math.sqrt(3) / 2 || dy > size) return false;
+  return size * Math.sqrt(3) / 2 - dx > (dy - size / 2) * Math.sqrt(3) / 2;
+}
+
 export default class GalaxyMapScene extends Phaser.Scene {
   constructor() {
     super({ key: 'GalaxyMapScene' });
@@ -71,6 +70,7 @@ export default class GalaxyMapScene extends Phaser.Scene {
     this.mapOffset = { x: 0, y: 0 };
     this.isDragging = false;
     this.dragStart = { x: 0, y: 0 };
+    this.hoveredSystem = null;
 
     // Compute seeded offsets for each system
     this.systemOffsets = {};
@@ -90,12 +90,25 @@ export default class GalaxyMapScene extends Phaser.Scene {
 
     this.gfx = this.add.graphics();
 
+    // System name labels (created once, updated each frame)
+    this._sysLabels = {};
+    for (const s of this.universe) {
+      const label = this.add.text(0, 0, s.name || '', {
+        fontSize: '6px', fontFamily: FONT, color: '#ffffff',
+        align: 'center',
+      }).setOrigin(0.5).setDepth(6).setVisible(false);
+      this._sysLabels[s.id] = label;
+    }
+
+    // Danger dots (per system)
+    this._dangerDots = {};
+
     this.add.text(W / 2, 24, '\u2B21 GALACTIC CHART', {
-      fontSize: '14px', fontFamily: '"Press Start 2P", monospace', color: '#00d4ff', fontStyle: 'bold',
+      fontSize: '14px', fontFamily: FONT, color: '#00d4ff', fontStyle: 'bold',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
 
-    this.add.text(W / 2, 42, '[M] Close   [Click] Warp to adjacent   [Drag] Pan', {
-      fontSize: '10px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
+    this.add.text(W / 2, 42, '[M] Close   [Click hex] Warp   [Drag] Pan', {
+      fontSize: '10px', fontFamily: FONT, color: '#555555',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(10);
 
     // Input
@@ -110,6 +123,8 @@ export default class GalaxyMapScene extends Phaser.Scene {
         this.mapOffset.x = pointer.x - this.dragStart.x;
         this.mapOffset.y = pointer.y - this.dragStart.y;
       }
+      // Hover detection
+      this.hoveredSystem = this.findSystemAtPoint(pointer.x, pointer.y);
     });
 
     this.input.on('pointerup', (pointer) => {
@@ -145,18 +160,31 @@ export default class GalaxyMapScene extends Phaser.Scene {
     };
   }
 
-  handleClick(mx, my) {
+  getHexScreenPos(col, row) {
+    const hp = hexPosition(col, row);
+    return {
+      x: hp.x + this.mapOffset.x,
+      y: hp.y + this.mapOffset.y,
+    };
+  }
+
+  findSystemAtPoint(mx, my) {
     for (const sys of this.universe) {
       if (!this.fog.has(`${sys.col}_${sys.row}`)) continue;
-      const pos = this.getSystemScreenPos(sys);
-      if (Phaser.Math.Distance.Between(mx, my, pos.x, pos.y) < 22) {
-        const cur = this.universe.find(s => s.id === this.currentId);
-        if (cur && cur.connections.includes(sys.id)) {
-          this.scene.stop('GalaxyMapScene');
-          if (this.onWarp) this.onWarp(sys.id);
-        }
-        break;
-      }
+      const hp = this.getHexScreenPos(sys.col, sys.row);
+      if (pointInHex(mx, my, hp.x, hp.y, HEX_SIZE * 0.95)) return sys;
+    }
+    return null;
+  }
+
+  handleClick(mx, my) {
+    const clicked = this.findSystemAtPoint(mx, my);
+    if (!clicked) return;
+
+    const cur = this.universe.find(s => s.id === this.currentId);
+    if (cur && cur.connections.includes(clicked.id)) {
+      this.scene.stop('GalaxyMapScene');
+      if (this.onWarp) this.onWarp(clicked.id);
     }
   }
 
@@ -165,16 +193,13 @@ export default class GalaxyMapScene extends Phaser.Scene {
     const g = this.gfx;
     g.clear();
 
-    // Draw hex outlines + region fills for revealed cells
+    // Draw hex outlines + region fills
     for (let r = 0; r < UNIVERSE_ROWS; r++) {
       for (let c = 0; c < UNIVERSE_COLS; c++) {
-        const hp = hexPosition(c, r);
-        const sx = hp.x + this.mapOffset.x;
-        const sy = hp.y + this.mapOffset.y;
-        if (sx < -100 || sx > W + 100 || sy < -100 || sy > H + 100) continue;
+        const hp = this.getHexScreenPos(c, r);
+        if (hp.x < -100 || hp.x > W + 100 || hp.y < -100 || hp.y > H + 100) continue;
 
         const isRevealed = this.fog.has(`${c}_${r}`);
-        // Region color fill (subtle)
         const dist = Math.sqrt((c - UNIVERSE_COLS / 2) ** 2 + (r - UNIVERSE_ROWS / 2) ** 2);
         let regionColor = 0x2ecc71;
         if (dist >= 6) regionColor = 0x8e44ad;
@@ -182,23 +207,23 @@ export default class GalaxyMapScene extends Phaser.Scene {
         else if (dist >= 2.5) regionColor = 0xf39c12;
 
         if (isRevealed) {
-          fillHex(g, sx, sy, HEX_SIZE * 0.9, regionColor, 0.04);
-          drawHexOutline(g, sx, sy, HEX_SIZE * 0.95, 0x00c8ff, 0.08);
+          fillHex(g, hp.x, hp.y, HEX_SIZE * 0.9, regionColor, 0.04);
+          drawHexOutline(g, hp.x, hp.y, HEX_SIZE * 0.95, 0x00c8ff, 0.08);
         } else {
-          drawHexOutline(g, sx, sy, HEX_SIZE * 0.95, 0xffffff, 0.03);
+          drawHexOutline(g, hp.x, hp.y, HEX_SIZE * 0.95, 0xffffff, 0.03);
         }
       }
     }
 
-    // Region labels (large, semi-transparent, positioned by region center)
+    // Region labels
     const rcx = (UNIVERSE_COLS / 2) * HEX_W + this.mapOffset.x;
     const rcy = (UNIVERSE_ROWS / 2) * (HEX_H * 0.75) + this.mapOffset.y;
     if (!this._regionLabels) {
       this._regionLabels = [
-        this.add.text(0, 0, 'CORE WORLDS', { fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#2ecc71' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
-        this.add.text(0, 0, 'FRONTIER', { fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#f39c12' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
-        this.add.text(0, 0, 'OUTER RIM', { fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#e74c3c' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
-        this.add.text(0, 0, 'THE RIFT', { fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#8e44ad' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
+        this.add.text(0, 0, 'CORE WORLDS', { fontSize: '12px', fontFamily: FONT, color: '#2ecc71' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
+        this.add.text(0, 0, 'FRONTIER', { fontSize: '12px', fontFamily: FONT, color: '#f39c12' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
+        this.add.text(0, 0, 'OUTER RIM', { fontSize: '12px', fontFamily: FONT, color: '#e74c3c' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
+        this.add.text(0, 0, 'THE RIFT', { fontSize: '12px', fontFamily: FONT, color: '#8e44ad' }).setOrigin(0.5).setAlpha(0.2).setDepth(5),
       ];
     }
     this._regionLabels[0].setPosition(rcx, rcy - 50);
@@ -215,37 +240,45 @@ export default class GalaxyMapScene extends Phaser.Scene {
         if (!o || !this.fog.has(`${o.col}_${o.row}`)) continue;
         const op = this.getSystemScreenPos(o);
         g.lineStyle(1, 0x00c8ff, 0.1);
-        // Slight curve using quadratic bezier
         const midX = (sp.x + op.x) / 2 + (op.y - sp.y) * 0.08;
         const midY = (sp.y + op.y) / 2 - (op.x - sp.x) * 0.08;
         g.beginPath();
         g.moveTo(sp.x, sp.y);
-        // Phaser graphics doesn't have quadratic, use line
         g.lineTo(midX, midY);
         g.lineTo(op.x, op.y);
         g.strokePath();
       }
     }
 
-    // Systems
+    // Systems + labels
+    const curSys = this.universe.find(s => s.id === this.currentId);
+
     for (const s of this.universe) {
       const pos = this.getSystemScreenPos(s);
-      if (pos.x < -50 || pos.x > W + 50 || pos.y < -50 || pos.y > H + 50) continue;
+      const label = this._sysLabels[s.id];
+      if (pos.x < -50 || pos.x > W + 50 || pos.y < -50 || pos.y > H + 50) {
+        if (label) label.setVisible(false);
+        continue;
+      }
 
       if (!this.fog.has(`${s.col}_${s.row}`)) {
         g.fillStyle(0xffffff, 0.03);
         g.fillCircle(pos.x, pos.y, 3);
+        if (label) label.setVisible(false);
         continue;
       }
 
       const isCur = s.id === this.currentId;
       const isVis = this.visited.has(s.id);
+      const isHov = this.hoveredSystem && this.hoveredSystem.id === s.id;
+      const isAdj = curSys && curSys.connections.includes(s.id);
       const regionColor = Phaser.Display.Color.HexStringToColor(s.region.color).color;
 
-      // Subtle region hex fill for visited systems
-      if (isVis) {
-        const hp = hexPosition(s.col, s.row);
-        fillHex(g, hp.x + this.mapOffset.x, hp.y + this.mapOffset.y, HEX_SIZE * 0.9, regionColor, 0.04);
+      // Hovered hex highlight
+      if (isHov) {
+        const hp = this.getHexScreenPos(s.col, s.row);
+        fillHex(g, hp.x, hp.y, HEX_SIZE * 0.9, 0x00d4ff, isAdj ? 0.12 : 0.06);
+        drawHexOutline(g, hp.x, hp.y, HEX_SIZE * 0.95, 0x00d4ff, isAdj ? 0.5 : 0.2);
       }
 
       // Current system glow
@@ -254,21 +287,48 @@ export default class GalaxyMapScene extends Phaser.Scene {
         g.fillCircle(pos.x, pos.y, 18);
       }
 
-      // System dot — larger for systems with more content
-      const dotSize = isCur ? 10 : 7;
+      // System dot
+      const dotSize = isCur ? 8 : 5;
       g.fillStyle(regionColor, isVis ? 1 : 0.45);
       g.fillCircle(pos.x, pos.y, dotSize);
 
+      // Danger dots (colored pips below name)
+      const danger = s.danger || 1;
+      const dotCount = Math.min(danger, 10);
+      const dotY = pos.y + 18;
+      const dotSpacing = 4;
+      const dotStartX = pos.x - (dotCount - 1) * dotSpacing / 2;
+      for (let d = 0; d < dotCount; d++) {
+        let dotColor = 0x2ecc71; // green
+        if (danger >= 7) dotColor = 0xe74c3c;      // red
+        else if (danger >= 4) dotColor = 0xf39c12;  // orange
+        g.fillStyle(dotColor, isVis ? 0.8 : 0.3);
+        g.fillCircle(dotStartX + d * dotSpacing, dotY, 1.5);
+      }
+
       // Dungeon indicator
       if (s.hasDungeon) {
-        g.fillStyle(0xff00ff, 1);
-        g.fillCircle(pos.x + 12, pos.y - 10, 3);
+        g.fillStyle(0xff00ff, 0.8);
+        g.fillCircle(pos.x + 14, pos.y - 12, 3);
       }
 
       // Current system ring
       if (isCur) {
         g.lineStyle(1.5, 0x00d4ff, 1);
-        g.strokeCircle(pos.x, pos.y, 15);
+        g.strokeCircle(pos.x, pos.y, 13);
+      }
+
+      // System name label
+      if (label) {
+        label.setPosition(pos.x, pos.y + 10);
+        label.setVisible(true);
+        label.setAlpha(isVis ? 0.7 : 0.3);
+        if (isCur) {
+          label.setColor('#00d4ff');
+          label.setAlpha(1);
+        } else {
+          label.setColor('#ffffff');
+        }
       }
     }
   }
