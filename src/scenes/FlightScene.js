@@ -22,7 +22,17 @@ export default class FlightScene extends Phaser.Scene {
     super({ key: 'FlightScene' });
   }
 
-  preload() {}
+  preload() {
+    // Load character portraits (fallback to colored rect if missing)
+    const portraits = [
+      'pax_neutral', 'pepper_neutral', 'mother', 'marshal', 'judge',
+      'grix', 'vera', 'informant', 'miner', 'smuggler', 'commander', 'mechanic'
+    ];
+    portraits.forEach(p => {
+      this.load.image(p, `assets/portraits/${p}.png`);
+    });
+    this.load.on('loaderror', () => {}); // Suppress missing file errors
+  }
 
   create() {
     // Sound
@@ -85,6 +95,8 @@ export default class FlightScene extends Phaser.Scene {
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
       w: 'W', a: 'A', s: 'S', d: 'D', space: 'SPACE',
     });
+    // Prevent right-click context menu on canvas
+    this.game.canvas.addEventListener('contextmenu', e => e.preventDefault());
     this.input.keyboard.on('keydown-M', () => {
       if (this.dialogueActive) return;
       if (this.invOpen) this.toggleInventory(); // close inv first
@@ -181,8 +193,8 @@ export default class FlightScene extends Phaser.Scene {
 
     // Bark system
     this.barkText = this.add.text(0, 0, '', {
-      fontSize: '8px', fontFamily: FONT, color: '#87CEEB',
-      backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 12, y: 6 },
+      fontSize: '10px', fontFamily: FONT, color: '#87CEEB',
+      backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 16, y: 10 },
       wordWrap: { width: 500 }, align: 'center',
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(520).setVisible(false);
     this.barkTimer = null;
@@ -319,10 +331,10 @@ export default class FlightScene extends Phaser.Scene {
       this.time.delayedCall(3000, () => this.fireBark('enter_new_system'));
     }
 
-    // M.O.T.H.E.R. transmission on first new system visit (one-shot, 8s after arrival)
-    if (isFirstVisit && this.visited.size > 1) {
+    // M.O.T.H.E.R. transmission — ONCE total, only outside Core zones
+    if (isFirstVisit && this.visited.size > 1 && sysData.region.key !== 'CORE'
+        && !this.firedTriggers.has('enter_system_first')) {
       this.time.delayedCall(8000, () => this.triggerStoryBeat('enter_system_first'));
-      // Pepper reacts to M.O.T.H.E.R. after transmission finishes (~20s)
       this.time.delayedCall(20000, () => this.fireBark('after_mother_transmission'));
     }
 
@@ -723,6 +735,14 @@ export default class FlightScene extends Phaser.Scene {
       const star = this.currentSystem.star;
       const distToStar = Phaser.Math.Distance.Between(this.player.x, this.player.y, star.x, star.y);
 
+      // Gravity pull (subtle, within 2.5x radius)
+      if (distToStar < star.radius * 2.5 && this.player.body) {
+        const pullStrength = 15 * (1 - distToStar / (star.radius * 2.5));
+        const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, star.x, star.y);
+        this.player.body.velocity.x += Math.cos(angle) * pullStrength;
+        this.player.body.velocity.y += Math.sin(angle) * pullStrength;
+      }
+
       // Warning zone (1.8x radius)
       if (distToStar < star.radius * 1.8) {
         if (!this._starWarned) {
@@ -901,7 +921,7 @@ export default class FlightScene extends Phaser.Scene {
 
   _showQueueItem(item) {
     if (item.type === 'bark') {
-      this._showBark(item.data.text);
+      this._showBark(item.data.text, item.speaker);
     } else if (item.type === 'transmission') {
       this._showTransmission(item.data);
     }
@@ -911,6 +931,8 @@ export default class FlightScene extends Phaser.Scene {
     if (item.type === 'bark') {
       if (this.barkTimer) this.barkTimer.remove();
       this.barkText.setVisible(false);
+      if (this.barkPortrait) { this.barkPortrait.destroy(); this.barkPortrait = null; }
+      if (this.barkPortraitGfx) { this.barkPortraitGfx.destroy(); this.barkPortraitGfx = null; }
     } else if (item.type === 'transmission') {
       if (this.transTimer) this.transTimer.remove();
       this.transContainer.setVisible(false).setAlpha(1);
@@ -918,16 +940,42 @@ export default class FlightScene extends Phaser.Scene {
     }
   }
 
-  _showBark(text) {
+  _showBark(text, speaker) {
     this.sound_mgr.playBarkBlip();
     const W = this.cameras.main.width;
     this.barkText.setText(text).setPosition(W / 2, 80).setAlpha(0).setVisible(true);
+
+    // Show bark portrait
+    if (this.barkPortrait) { this.barkPortrait.destroy(); this.barkPortrait = null; }
+    if (this.barkPortraitGfx) { this.barkPortraitGfx.destroy(); this.barkPortraitGfx = null; }
+    const sp = speaker || 'pepper';
+    const pKey = sp === 'pepper' ? 'pepper_neutral' : sp === 'pax' ? 'pax_neutral' : sp;
+    if (this.textures.exists(pKey)) {
+      this.barkPortrait = this.add.image(W / 2 - this.barkText.width / 2 - 40, 95, pKey)
+        .setDisplaySize(32, 32).setScrollFactor(0).setDepth(521).setAlpha(0);
+      this.tweens.add({ targets: this.barkPortrait, alpha: 1, duration: 300 });
+    } else {
+      // Colored rect fallback
+      const colors = { pepper: 0x87CEEB, pax: 0xe67e22, 'M.O.T.H.E.R.': 0xe74c3c };
+      const c = colors[sp] || 0x87CEEB;
+      this.barkPortraitGfx = this.add.graphics().setScrollFactor(0).setDepth(521).setAlpha(0);
+      this.barkPortraitGfx.fillStyle(c, 0.4);
+      this.barkPortraitGfx.fillRect(W / 2 - this.barkText.width / 2 - 40, 79, 32, 32);
+      this.barkPortraitGfx.lineStyle(1, c, 0.6);
+      this.barkPortraitGfx.strokeRect(W / 2 - this.barkText.width / 2 - 40, 79, 32, 32);
+      this.tweens.add({ targets: this.barkPortraitGfx, alpha: 1, duration: 300 });
+    }
+
     this.tweens.add({ targets: this.barkText, alpha: 1, y: 90, duration: 300 });
     if (this.barkTimer) this.barkTimer.remove();
     this.barkTimer = this.time.delayedCall(3500, () => {
+      if (this.barkPortrait) this.tweens.add({ targets: this.barkPortrait, alpha: 0, duration: 300 });
+      if (this.barkPortraitGfx) this.tweens.add({ targets: this.barkPortraitGfx, alpha: 0, duration: 300 });
       this.tweens.add({ targets: this.barkText, alpha: 0, y: 80, duration: 300,
         onComplete: () => {
           this.barkText.setVisible(false);
+          if (this.barkPortrait) { this.barkPortrait.destroy(); this.barkPortrait = null; }
+          if (this.barkPortraitGfx) { this.barkPortraitGfx.destroy(); this.barkPortraitGfx = null; }
           this.textQueue.dismiss();
         }
       });
@@ -1052,6 +1100,18 @@ export default class FlightScene extends Phaser.Scene {
     }
   }
 
+  _spawnHitSparks(color, count) {
+    for (let i = 0; i < count; i++) {
+      const px = this.player.x + (Math.random() - 0.5) * 16;
+      const py = this.player.y + (Math.random() - 0.5) * 16;
+      const p = this.add.rectangle(px, py, 2, 2, color).setDepth(200).setAlpha(0.9);
+      this.tweens.add({
+        targets: p, x: px + (Math.random() - 0.5) * 40, y: py + (Math.random() - 0.5) * 40,
+        alpha: 0, duration: 300, onComplete: () => p.destroy(),
+      });
+    }
+  }
+
   // ========== COMBAT ==========
 
   setupCombatCollisions() {
@@ -1078,17 +1138,22 @@ export default class FlightScene extends Phaser.Scene {
       this.fireBark('first_enemy_spotted');
     }
 
-    // Fire weapon on left click (not mining, not dialogue)
-    if (this.input.activePointer.isDown && !this.dialogueActive && !this.invOpen && !this.dialogueUI.isOpen) {
-      // Check if click is near a mineable asteroid — mining takes priority
-      let nearMineable = !!this.miningAsteroid;
-      if (!nearMineable) {
-        const wp = this.cameras.main.getWorldPoint(this.input.activePointer.x, this.input.activePointer.y);
-        for (const a of this.asteroids) {
-          if (a.mined) continue;
-          const dc = Phaser.Math.Distance.Between(wp.x, wp.y, a.x, a.y);
-          const dp = Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y);
-          if (dc < 35 && dp < 120) { nearMineable = true; break; }
+    // Fire weapon on left click or right click (not mining, not dialogue)
+    const ptr = this.input.activePointer;
+    const canFire = !this.dialogueActive && !this.invOpen && !this.dialogueUI.isOpen;
+    if (canFire && (ptr.leftButtonDown() || ptr.rightButtonDown())) {
+      // Left click: check if near mineable asteroid — mining takes priority
+      let nearMineable = false;
+      if (ptr.leftButtonDown()) {
+        nearMineable = !!this.miningAsteroid;
+        if (!nearMineable) {
+          const wp = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
+          for (const a of this.asteroids) {
+            if (a.mined) continue;
+            const dc = Phaser.Math.Distance.Between(wp.x, wp.y, a.x, a.y);
+            const dp = Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y);
+            if (dc < 35 && dp < 120) { nearMineable = true; break; }
+          }
         }
       }
       if (!nearMineable) {
@@ -1259,7 +1324,7 @@ export default class FlightScene extends Phaser.Scene {
     this.sound_mgr.playPlayerHit();
 
     // Pause shield regen for 3s
-    this.shieldRegenPaused = Date.now() + 3000;
+    this.shieldRegenPaused = Date.now() + 5000; // 5s pause after hit
 
     if (this.player.shield > 0) {
       this.player.shield -= amount;
@@ -1272,15 +1337,25 @@ export default class FlightScene extends Phaser.Scene {
           this.fireBark('shields_depleted');
         }
       }
-      // Brief blue flash
-      this.cameras.main.flash(80, 0, 100, 255, false);
+      // Shield hit bark (15s cooldown)
+      if (Date.now() - (this._lastShieldBarkTime || 0) > 15000) {
+        this._lastShieldBarkTime = Date.now();
+        this.fireBark('player_hit');
+      }
+      // Shield hit: blue ring flash around ship + sparks
+      this._spawnHitSparks(0x4488ff, 4);
+      if (this.player.gfx) {
+        this.player.gfx.lineStyle(2, 0x4488ff, 0.8);
+        this.player.gfx.strokeCircle(this.player.x, this.player.y, 20);
+        this.time.delayedCall(100, () => this.player.redraw && this.player.redraw());
+      }
     } else {
       this.player.hull -= amount;
-      // Brief red flash + shake
-      this.cameras.main.flash(80, 255, 50, 50, false);
+      // Hull hit: red tint + sparks + subtle shake
+      this._spawnHitSparks(0xff4444, 5);
       this.cameras.main.shake(100, 0.003);
-      // Hull damage bark (once per 10s)
-      if (Date.now() - this.lastCombatBarkTime > 10000) {
+      // Hull damage bark (repeats on 15s cooldown)
+      if (Date.now() - this.lastCombatBarkTime > 15000) {
         this.lastCombatBarkTime = Date.now();
         this.fireBark('player_hit_hull');
       }
@@ -1323,47 +1398,99 @@ export default class FlightScene extends Phaser.Scene {
   showDeathScreen() {
     const W = this.scale.width;
     const H = this.scale.height;
+    const elements = [];
 
     // Black overlay
     const overlay = this.add.rectangle(W / 2, H / 2, W * 2, H * 2, 0x000000)
       .setScrollFactor(0).setDepth(900);
+    elements.push(overlay);
 
-    const t1 = this.add.text(W / 2, H * 0.35,
-      "M.O.T.H.E.R.'S LAW ENFORCEMENT\nHAS PROCESSED YOUR VESSEL.", {
-      fontSize: '16px', fontFamily: FONT, color: '#e74c3c',
-      align: 'center', lineSpacing: 8,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
+    // M.O.T.H.E.R. portrait (or fallback)
+    const portraitX = W * 0.25, portraitY = H * 0.4;
+    const pKey = 'mother';
+    if (this.textures.exists(pKey)) {
+      const img = this.add.image(portraitX, portraitY, pKey).setDisplaySize(96, 96)
+        .setScrollFactor(0).setDepth(901).setAlpha(0);
+      this.tweens.add({ targets: img, alpha: 1, duration: 600 });
+      elements.push(img);
+    } else {
+      const pg = this.add.graphics().setScrollFactor(0).setDepth(901);
+      pg.fillStyle(0xe74c3c, 0.3);
+      pg.fillRect(portraitX - 48, portraitY - 48, 96, 96);
+      pg.lineStyle(1, 0xe74c3c, 0.6);
+      pg.strokeRect(portraitX - 48, portraitY - 48, 96, 96);
+      const init = this.add.text(portraitX, portraitY, 'M', {
+        fontSize: '32px', fontFamily: FONT, color: '#e74c3c',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(902);
+      elements.push(pg, init);
+    }
 
-    const t2 = this.add.text(W / 2, H * 0.55,
-      "You've been released at the nearest station.\nTry not to let it happen again.", {
-      fontSize: '10px', fontFamily: FONT, color: '#888888',
-      align: 'center', lineSpacing: 6,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
-
-    this.tweens.add({ targets: t1, alpha: 1, duration: 800 });
-    this.time.delayedCall(1200, () => {
-      this.tweens.add({ targets: t2, alpha: 1, duration: 800 });
+    // Amber typewriter text lines
+    const lines = [
+      'M.O.T.H.E.R.',
+      "VESSEL 'DUSTKICKER' HAS BEEN PROCESSED.",
+      'OCCUPANTS RELEASED TO NEAREST STATION.',
+      'HAVE A PRODUCTIVE DAY.',
+    ];
+    const textX = W * 0.42, startY = H * 0.3;
+    const deathTexts = [];
+    lines.forEach((line, i) => {
+      const t = this.add.text(textX, startY + i * 28, '', {
+        fontSize: '10px', fontFamily: FONT, color: '#f39c12',
+      }).setScrollFactor(0).setDepth(901);
+      deathTexts.push(t);
+      elements.push(t);
     });
 
-    // Skip on click/SPACE or auto-respawn after 5s
+    // Typewriter effect
+    let lineIdx = 0, charIdx = 0;
+    const typeTimer = this.time.addEvent({
+      delay: 40,
+      loop: true,
+      callback: () => {
+        if (lineIdx >= lines.length) { typeTimer.remove(); return; }
+        charIdx++;
+        deathTexts[lineIdx].setText(lines[lineIdx].substring(0, charIdx));
+        this.sound_mgr.playTypewriterTick('M.O.T.H.E.R.');
+        if (charIdx >= lines[lineIdx].length) {
+          lineIdx++;
+          charIdx = 0;
+        }
+      },
+    });
+
+    // Penalty text
+    const creditsLost = Math.floor(this.player.credits * 0.25);
+    const penaltyText = this.add.text(textX, startY + lines.length * 28 + 20,
+      `Credits confiscated: -${creditsLost}\nHull repaired to 50%`, {
+      fontSize: '8px', fontFamily: FONT, color: '#888888', lineSpacing: 4,
+    }).setScrollFactor(0).setDepth(901).setAlpha(0);
+    elements.push(penaltyText);
+    this.time.delayedCall(3000, () => this.tweens.add({ targets: penaltyText, alpha: 1, duration: 600 }));
+
+    // Click hint
+    const hint = this.add.text(W / 2, H * 0.75, '[Click or SPACE to continue]', {
+      fontSize: '8px', fontFamily: FONT, color: '#555555',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
+    elements.push(hint);
+    this.time.delayedCall(3500, () => this.tweens.add({ targets: hint, alpha: 1, duration: 400 }));
+
+    // Cleanup + respawn
     const cleanup = () => {
-      overlay.destroy();
-      t1.destroy();
-      t2.destroy();
+      typeTimer.remove();
+      elements.forEach(e => e.destroy());
       this.respawnPlayer();
     };
-
     const skipHandler = () => {
       this.input.off('pointerdown', skipHandler);
       this.input.keyboard.off('keydown-SPACE', skipHandler);
       cleanup();
     };
-
-    this.time.delayedCall(1500, () => {
+    this.time.delayedCall(2000, () => {
       this.input.once('pointerdown', skipHandler);
       this.input.keyboard.once('keydown-SPACE', skipHandler);
     });
-    this.time.delayedCall(5000, () => {
+    this.time.delayedCall(8000, () => {
       this.input.off('pointerdown', skipHandler);
       this.input.keyboard.off('keydown-SPACE', skipHandler);
       if (this.playerDead) cleanup();

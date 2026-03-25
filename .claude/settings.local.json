@@ -22,7 +22,9 @@
       "Bash(cp \"/Users/nathan/Downloads/files_extracted/BUILD_SPEC_Phase2.5b.md\" \"/Users/nathan/Things I Made/Space Game/\")",
       "Bash(cp \"/Users/nathan/Downloads/files_extracted/GAME_DESIGN_DOC_v3.3.md\" \"/Users/nathan/Things I Made/Space Game/\")",
       "Bash(rm -f BUILD_SPEC_Phase2.5a.md GAME_DESIGN_DOC.md GAME_DESIGN_DOC_v3.1.md)",
-      "Bash(ls *.md)"
+      "Bash(ls *.md)",
+      "Bash(find '/Users/nathan/Things I Made/Space Game' -name *.png -not -path */node_modules/* -not -path */dist/*)",
+      "Bash(ls /Users/nathan/Downloads/*portrait* /Users/nathan/Downloads/*neutral* /Users/nathan/Downloads/*mother* /Users/nathan/Downloads/*.png)"
     ]
   }
 }

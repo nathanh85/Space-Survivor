@@ -77,11 +77,11 @@ export default class TitleScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-ENTER', () => this.startGame());
 
     // Version / credits
-    this.add.text(W / 2, H * 0.75, 'WASD to fly  |  Mouse to aim  |  M for map', {
-      fontSize: '10px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
+    this.add.text(W / 2, H * 0.75, '[SPACE] Thrust  |  [Click] Shoot/Mine  |  [M] Map  |  [TAB] Inventory', {
+      fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
     }).setOrigin(0.5);
 
-    this.add.text(W / 2, H - 20, 'v0.5.2 — P.E.S.T.S.', {
+    this.add.text(W / 2, H - 20, 'v0.5.3 — P.E.S.T.S.', {
       fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#333333',
     }).setOrigin(0.5);
 

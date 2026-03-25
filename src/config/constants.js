@@ -74,7 +74,7 @@ export const PLAYER_DEFAULTS = {
   reverse: 125,     // backward acceleration px/s² (was 100, +25%)
   strafe: 120,      // side acceleration px/s²
   maxSpeed: 300,    // velocity cap px/s
-  drag: 185,        // Arcade physics drag value (was 165, smoother stop ~1.5s)
+  drag: 210,        // Arcade physics drag value — ship stops within ~1 second
   turnSmooth: 0.12,
   hull: 100,
   shield: 50,
@@ -86,7 +86,7 @@ export const PLAYER_DEFAULTS = {
 // --- FONT ---
 export const FONT = '"Press Start 2P", monospace';
 
-export const BUILD_VERSION = 'v0.5.2';
+export const BUILD_VERSION = 'v0.5.3';
 export const BUILD_DATE = '2026-03-23';
 
 // --- COLORS ---

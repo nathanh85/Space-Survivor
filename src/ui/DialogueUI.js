@@ -19,6 +19,32 @@ const PORTRAIT_COLORS = {
   outrider:     { bg: 0x2ecc71, initial: 'O', label: '#2ecc71' },
 };
 
+// Speaker name → portrait texture key mapping
+const SPEAKER_PORTRAITS = {
+  pepper: 'pepper_neutral',
+  pax: 'pax_neutral',
+  'M.O.T.H.E.R.': 'mother',
+  grix: 'grix',
+  'commander vera': 'vera',
+  '???': 'informant',
+  outrider: 'commander',
+  marshal: 'marshal',
+  judge: 'judge',
+  miner: 'miner',
+  smuggler: 'smuggler',
+  mechanic: 'mechanic',
+};
+
+function getPortraitKey(speaker) {
+  const key = (speaker || '').toLowerCase();
+  if (SPEAKER_PORTRAITS[speaker]) return SPEAKER_PORTRAITS[speaker];
+  if (SPEAKER_PORTRAITS[key]) return SPEAKER_PORTRAITS[key];
+  for (const [k, v] of Object.entries(SPEAKER_PORTRAITS)) {
+    if (key.includes(k.toLowerCase())) return v;
+  }
+  return null;
+}
+
 function getPortraitInfo(speaker) {
   const key = (speaker || '').toLowerCase();
   // Try exact match first
@@ -168,8 +194,10 @@ export default class DialogueUI {
     this.portraitGfx.clear();
     this.portraitImage.setVisible(false);
 
-    if (beat.portrait && this.scene.textures.exists(beat.portrait)) {
-      this.portraitImage.setTexture(beat.portrait);
+    // Auto-resolve portrait from speaker if not explicitly set
+    const portraitKey = beat.portrait || getPortraitKey(beat.speaker);
+    if (portraitKey && this.scene.textures.exists(portraitKey)) {
+      this.portraitImage.setTexture(portraitKey);
       this.portraitImage.setPosition(px + PORTRAIT_SIZE / 2, py + PORTRAIT_SIZE / 2);
       this.portraitImage.setDisplaySize(PORTRAIT_SIZE, PORTRAIT_SIZE);
       this.portraitImage.setVisible(true);

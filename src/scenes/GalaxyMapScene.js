@@ -95,7 +95,7 @@ export default class GalaxyMapScene extends Phaser.Scene {
     for (const s of this.universe) {
       const label = this.add.text(0, 0, s.name || '', {
         fontSize: '8px', fontFamily: FONT, color: '#ffffff',
-        align: 'center',
+        align: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 4, y: 2 },
       }).setOrigin(0.5).setDepth(6).setVisible(false);
       this._sysLabels[s.id] = label;
     }
@@ -141,6 +141,15 @@ export default class GalaxyMapScene extends Phaser.Scene {
     this.cameras.main.fadeIn(300, 0, 0, 0);
     this.input.keyboard.on('keydown-M', () => this.closeMap());
     this.input.keyboard.on('keydown-ESC', () => this.closeMap());
+    this.input.keyboard.on('keydown-TAB', (e) => {
+      e.preventDefault();
+      this.closeMap();
+      // Open inventory after returning to flight
+      this.time.delayedCall(100, () => {
+        const flight = this.scene.get('FlightScene');
+        if (flight && flight.toggleInventory) flight.toggleInventory();
+      });
+    });
   }
 
   closeMap() {
