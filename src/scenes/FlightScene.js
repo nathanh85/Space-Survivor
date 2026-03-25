@@ -120,6 +120,9 @@ export default class FlightScene extends Phaser.Scene {
 
     // Graphics layers
     this.bgLayer = this.add.graphics().setDepth(0);
+    // Parallax near-star layer (scrollFactor < 1 for parallax effect)
+    this.nearStarLayer = this.add.graphics().setDepth(1);
+    this.parallaxOffset = { x: 0, y: 0 };
     this.starLayer = this.add.graphics().setDepth(5);
     this.orbitLayer = this.add.graphics().setDepth(10);
     this.staticEntityGfx = this.add.graphics().setDepth(20);
@@ -176,6 +179,13 @@ export default class FlightScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(501).setVisible(false);
     this.killLabel = this.add.text(0, 0, '', {
       fontSize: '8px', fontFamily: FONT, color: 'rgba(255,255,255,0.3)',
+    }).setScrollFactor(0).setDepth(501);
+    this.xpLabel = this.add.text(0, 0, '', {
+      fontSize: '8px', fontFamily: FONT, color: '#bb6bd9',
+    }).setScrollFactor(0).setDepth(501);
+    this.xpBarGfx = this.add.graphics().setScrollFactor(0).setDepth(500);
+    this.creditsLabel = this.add.text(0, 0, '', {
+      fontSize: '8px', fontFamily: FONT, color: '#f39c12',
     }).setScrollFactor(0).setDepth(501);
 
     // Prompt text with background for visibility
@@ -385,6 +395,31 @@ export default class FlightScene extends Phaser.Scene {
     for (const s of stars) {
       g.fillStyle(0xffffff, s.brightness * 0.7);
       g.fillRect(s.x, s.y, s.size, s.size);
+    }
+    // Generate near-star parallax layer
+    this._nearStars = [];
+    const rng = new RNG(42);
+    for (let i = 0; i < 60; i++) {
+      this._nearStars.push({
+        x: rng.float(0, SYS_W), y: rng.float(0, SYS_H),
+        size: rng.float(1, 2), brightness: rng.float(0.3, 0.8),
+      });
+    }
+  }
+
+  updateParallax() {
+    if (!this._nearStars || !this.player.body) return;
+    // Shift near-stars opposite to velocity for parallax feel
+    this.parallaxOffset.x += this.player.body.velocity.x * 0.0003;
+    this.parallaxOffset.y += this.player.body.velocity.y * 0.0003;
+    // Plus constant slow drift
+    this.parallaxOffset.x += 0.02;
+    const g = this.nearStarLayer; g.clear();
+    for (const s of this._nearStars) {
+      const nx = s.x + this.parallaxOffset.x * 50;
+      const ny = s.y + this.parallaxOffset.y * 50;
+      g.fillStyle(0xaaddff, s.brightness * 0.5);
+      g.fillRect(nx, ny, s.size, s.size);
     }
   }
 
@@ -768,6 +803,9 @@ export default class FlightScene extends Phaser.Scene {
       this.drawStar(this.currentSystem.star, time);
     }
 
+    // Parallax
+    this.updateParallax();
+
     // Combat
     this.updateCombat(time, delta);
     this.updateLootPickup();
@@ -775,8 +813,8 @@ export default class FlightScene extends Phaser.Scene {
     // Animated entities
     this.drawAnimatedEntities(time);
 
-    // Mining
-    this.handleMining(dt);
+    // Asteroid HP bars
+    this.drawAsteroidHPBars();
 
     // HUD
     this.updateHUD(W, H);
@@ -821,63 +859,102 @@ export default class FlightScene extends Phaser.Scene {
     }
   }
 
-  // ========== MINING ==========
-
-  handleMining(dt) {
-    const ptr = this.input.activePointer;
+  drawAsteroidHPBars() {
     this.miningGfx.clear();
-    if (!ptr.isDown || this.invOpen || this.dialogueActive) {
-      if (this.miningAsteroid) { this.miningAsteroid.mineProgress = 0; this.miningAsteroid = null; }
-      return;
-    }
-    const wp = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
-    let closest = null, cd = Infinity;
     for (const a of this.asteroids) {
-      if (a.mined) continue;
-      const dc = Phaser.Math.Distance.Between(wp.x, wp.y, a.x, a.y);
-      const dp = Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y);
-      if (dc < 35 && dp < 120 && dc < cd) { closest = a; cd = dc; }
-    }
-    if (!closest) {
-      if (this.miningAsteroid) { this.miningAsteroid.mineProgress = 0; this.miningAsteroid = null; }
-      return;
-    }
-    if (this.miningAsteroid !== closest) {
-      if (this.miningAsteroid) this.miningAsteroid.mineProgress = 0;
-      this.miningAsteroid = closest;
-    }
-    closest.mineProgress += dt / closest.mineTime;
-
-    // Mining sound
-    if (Math.random() < 0.1) this.sound_mgr.playMiningClick();
-
-    this.miningGfx.lineStyle(1.5, 0x00d4ff, 0.6);
-    this.miningGfx.strokeCircle(closest.x, closest.y, closest.size + 8);
-    if (closest.mineProgress > 0 && closest.mineProgress < 1) {
-      const bw = closest.size * 3;
+      if (a.mined || a.hp >= a.maxHp) continue;
+      const bw = a.size * 2.5;
       this.miningGfx.fillStyle(0x333333, 0.8);
-      this.miningGfx.fillRect(closest.x - bw / 2, closest.y + closest.size + 4, bw, 3);
+      this.miningGfx.fillRect(a.x - bw / 2, a.y + a.size + 4, bw, 3);
       this.miningGfx.fillStyle(0x00d4ff);
-      this.miningGfx.fillRect(closest.x - bw / 2, closest.y + closest.size + 4, bw * closest.mineProgress, 3);
+      this.miningGfx.fillRect(a.x - bw / 2, a.y + a.size + 4, bw * (a.hp / a.maxHp), 3);
     }
-    if (closest.mineProgress >= 1) {
-      closest.mined = true;
-      this.sound_mgr.playMineComplete();
-      const res = RESOURCES[closest.resourceId];
-      if (res) {
-        const amt = 1 + Math.floor(Math.random() * 2);
-        this.inventory.addItem(closest.resourceId, amt);
-        const ft = this.add.text(closest.x, closest.y - 15, '+' + amt + ' ' + res.name, {
-          fontSize: '11px', fontFamily: FONT, color: res.tier.color, stroke: '#000', strokeThickness: 2,
-        }).setOrigin(0.5).setDepth(300);
-        this.tweens.add({ targets: ft, y: closest.y - 45, alpha: 0, duration: 1200, onComplete: () => ft.destroy() });
-      }
-      if (!this.firstMineComplete) {
-        this.firstMineComplete = true;
-        this.fireBark('first_mine_complete');
-      }
-      this.lastActivityTime = Date.now();
+  }
+
+  // ========== SHOOT-TO-MINE ==========
+
+  handleAsteroidHit(asteroid, damage) {
+    asteroid.hp -= damage;
+
+    // Visual: debris particles
+    for (let i = 0; i < 3; i++) {
+      const px = asteroid.x + (Math.random() - 0.5) * asteroid.size;
+      const py = asteroid.y + (Math.random() - 0.5) * asteroid.size;
+      const p = this.add.rectangle(px, py, 2, 2, 0x8B7355).setDepth(200);
+      this.tweens.add({
+        targets: p, x: px + (Math.random() - 0.5) * 30, y: py + (Math.random() - 0.5) * 30,
+        alpha: 0, duration: 400, onComplete: () => p.destroy(),
+      });
     }
+
+    // Sound: rock hit
+    this.sound_mgr.playMiningClick();
+
+    if (asteroid.hp <= 0) {
+      this.destroyAsteroid(asteroid);
+    }
+  }
+
+  destroyAsteroid(asteroid) {
+    asteroid.mined = true;
+    this.sound_mgr.playMineComplete();
+
+    // Bigger debris burst
+    for (let i = 0; i < 8; i++) {
+      const px = asteroid.x + (Math.random() - 0.5) * asteroid.size * 1.5;
+      const py = asteroid.y + (Math.random() - 0.5) * asteroid.size * 1.5;
+      const c = [0x8B7355, 0xA0A0A0, 0x6B6B6B][Math.floor(Math.random() * 3)];
+      const p = this.add.rectangle(px, py, 3, 3, c).setDepth(200);
+      this.tweens.add({
+        targets: p, x: px + (Math.random() - 0.5) * 50, y: py + (Math.random() - 0.5) * 50,
+        alpha: 0, duration: 600, onComplete: () => p.destroy(),
+      });
+    }
+
+    // Resource drops as loot pickups
+    const res = RESOURCES[asteroid.resourceId];
+    if (res) {
+      const drops = asteroid.size < 15 ? 1 : asteroid.size < 20 ? 1 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < drops; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 20 + Math.random() * 30;
+        this.spawnLootItem(
+          asteroid.x + Math.cos(angle) * dist,
+          asteroid.y + Math.sin(angle) * dist,
+          asteroid.resourceId, 1, Phaser.Display.Color.HexStringToColor(res.tier.color).color
+        );
+      }
+    }
+
+    // XP
+    this.player.xp += 3;
+    const xpText = this.add.text(asteroid.x, asteroid.y - 15, '+3 XP', {
+      fontSize: '8px', fontFamily: FONT, color: '#bb6bd9', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(300);
+    this.tweens.add({ targets: xpText, y: asteroid.y - 40, alpha: 0, duration: 800, onComplete: () => xpText.destroy() });
+
+    // Level up check
+    if (this.player.xp >= this.player.xpNext) {
+      this.player.level++;
+      this.player.xp -= this.player.xpNext;
+      this.player.xpNext = Math.floor(this.player.xpNext * 1.5);
+      this.onLevelUp();
+    }
+
+    // First mine bark
+    if (!this.firstMineComplete) {
+      this.firstMineComplete = true;
+      this.fireBark('first_mine_complete');
+    }
+
+    // Big haul bark
+    const drops = asteroid.size >= 20 ? 3 : 0;
+    if (drops >= 3 && !this.firedTriggers.has('bark_big_haul')) {
+      this.firedTriggers.add('bark_big_haul');
+      this.fireBark('asteroid_dropped_3_plus');
+    }
+
+    this.lastActivityTime = Date.now();
   }
 
   // ========== STORY / BARK / TRANSMISSION (via TextQueue) ==========
@@ -935,6 +1012,7 @@ export default class FlightScene extends Phaser.Scene {
       if (this.barkPortraitGfx) { this.barkPortraitGfx.destroy(); this.barkPortraitGfx = null; }
     } else if (item.type === 'transmission') {
       if (this.transTimer) this.transTimer.remove();
+      if (this.transPortrait) { this.transPortrait.destroy(); this.transPortrait = null; }
       this.transContainer.setVisible(false).setAlpha(1);
       this.transCurrentBeat = null;
     }
@@ -997,6 +1075,14 @@ export default class FlightScene extends Phaser.Scene {
     this.transSpeakerLabel = isMother ? '\u25C8 M.O.T.H.E.R.' : '\u25C8 INCOMING';
 
     this.transText.setColor(color);
+
+    // Show portrait for M.O.T.H.E.R. transmissions
+    if (this.transPortrait) { this.transPortrait.destroy(); this.transPortrait = null; }
+    if (isMother && this.textures.exists('mother')) {
+      this.transPortrait = this.add.image(W / 2 - 260, 160, 'mother')
+        .setDisplaySize(48, 48).setScrollFactor(0).setDepth(521);
+      this.transContainer.add(this.transPortrait);
+    }
 
     if (isMother) this.sound_mgr.playMotherHum();
     else this.sound_mgr.playTransmissionStatic();
@@ -1100,6 +1186,47 @@ export default class FlightScene extends Phaser.Scene {
     }
   }
 
+  onLevelUp() {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+
+    // Stats boost
+    this.player.maxHull += 5;
+    this.player.maxShield += 5;
+    this.player.hull = this.player.maxHull; // full heal
+    this.player.shield = this.player.maxShield;
+
+    // Damage boost every 2 levels
+    if (this.player.level % 2 === 0) {
+      this.weaponSystem.weapon.damage += 2;
+    }
+
+    // Sound: ascending chime
+    this.sound_mgr.playPickup();
+    this.time.delayedCall(100, () => this.sound_mgr.playPickup());
+    this.time.delayedCall(200, () => this.sound_mgr.playMineComplete());
+
+    // Visual: gold ring expanding from ship
+    const ring = this.add.circle(this.player.x, this.player.y, 10, 0xf1c40f, 0).setDepth(250);
+    ring.setStrokeStyle(2, 0xf1c40f, 0.8);
+    this.tweens.add({
+      targets: ring, radius: 80, alpha: 0,
+      duration: 1000, onComplete: () => ring.destroy(),
+    });
+
+    // Visual: "LEVEL X" text center-screen
+    const lvlText = this.add.text(W / 2, H * 0.35, 'LEVEL ' + this.player.level, {
+      fontSize: '24px', fontFamily: FONT, color: '#f1c40f', stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(600).setAlpha(0);
+    this.tweens.add({ targets: lvlText, alpha: 1, duration: 300 });
+    this.time.delayedCall(2000, () => {
+      this.tweens.add({ targets: lvlText, alpha: 0, duration: 500, onComplete: () => lvlText.destroy() });
+    });
+
+    // Pepper bark
+    this.fireBark('level_up');
+  }
+
   _spawnHitSparks(color, count) {
     for (let i = 0; i < count; i++) {
       const px = this.player.x + (Math.random() - 0.5) * 16;
@@ -1124,6 +1251,9 @@ export default class FlightScene extends Phaser.Scene {
     const dt = delta / 1000;
     const danger = this.currentSystem ? this.currentSystem.data.danger : 1;
 
+    // Update weapon (range check)
+    this.weaponSystem.update();
+
     // Update enemy manager
     const combatCleared = this.enemyManager.update(time, delta, this.player.x, this.player.y, danger);
     if (combatCleared) {
@@ -1138,30 +1268,14 @@ export default class FlightScene extends Phaser.Scene {
       this.fireBark('first_enemy_spotted');
     }
 
-    // Fire weapon on left click or right click (not mining, not dialogue)
+    // Fire weapon on left click or right click (shoot-to-mine + shoot enemies)
     const ptr = this.input.activePointer;
     const canFire = !this.dialogueActive && !this.invOpen && !this.dialogueUI.isOpen;
     if (canFire && (ptr.leftButtonDown() || ptr.rightButtonDown())) {
-      // Left click: check if near mineable asteroid — mining takes priority
-      let nearMineable = false;
-      if (ptr.leftButtonDown()) {
-        nearMineable = !!this.miningAsteroid;
-        if (!nearMineable) {
-          const wp = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
-          for (const a of this.asteroids) {
-            if (a.mined) continue;
-            const dc = Phaser.Math.Distance.Between(wp.x, wp.y, a.x, a.y);
-            const dp = Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y);
-            if (dc < 35 && dp < 120) { nearMineable = true; break; }
-          }
-        }
-      }
-      if (!nearMineable) {
-        const proj = this.weaponSystem.fire(time, this.player.x, this.player.y, this.player.shipAngle);
-        if (proj) {
-          this.sound_mgr.playLaser();
-          this.lastActivityTime = Date.now();
-        }
+      const proj = this.weaponSystem.fire(time, this.player.x, this.player.y, this.player.shipAngle);
+      if (proj) {
+        this.sound_mgr.playLaser();
+        this.lastActivityTime = Date.now();
       }
     }
 
@@ -1189,6 +1303,21 @@ export default class FlightScene extends Phaser.Scene {
         }
       });
     }
+
+    // Check player projectiles vs asteroids (shoot-to-mine)
+    this.weaponSystem.projectiles.getChildren().forEach(proj => {
+      if (!proj || !proj.active) return;
+      for (const a of this.asteroids) {
+        if (a.mined) continue;
+        const dist = Phaser.Math.Distance.Between(proj.x, proj.y, a.x, a.y);
+        if (dist < a.size + 4) {
+          const dmg = proj._damage || 15;
+          proj.destroy();
+          this.handleAsteroidHit(a, dmg);
+          break;
+        }
+      }
+    });
 
     // Check enemy projectiles vs player
     this.enemyManager.enemyProjectiles.getChildren().forEach(proj => {
@@ -1243,7 +1372,7 @@ export default class FlightScene extends Phaser.Scene {
       this.player.level++;
       this.player.xp -= this.player.xpNext;
       this.player.xpNext = Math.floor(this.player.xpNext * 1.5);
-      this.fireBark('level_up');
+      this.onLevelUp();
     }
 
     // Loot drop
@@ -1617,6 +1746,20 @@ export default class FlightScene extends Phaser.Scene {
       this.hostileLabel.setVisible(false);
     }
     this.killLabel.setText('KILLS: ' + this.enemyManager.killCount).setPosition(W - 10, H - 34).setOrigin(1, 1);
+
+    // XP bar
+    const xpPct = this.player.xpNext > 0 ? this.player.xp / this.player.xpNext : 0;
+    this.xpLabel.setText('LV.' + this.player.level + '  ' + this.player.xp + '/' + this.player.xpNext)
+      .setPosition(10, 120);
+    this.xpBarGfx.clear();
+    const xpBarX = 10, xpBarY = 134, xpBarW = 120, xpBarH = 4;
+    this.xpBarGfx.fillStyle(0x333333, 0.6);
+    this.xpBarGfx.fillRect(xpBarX, xpBarY, xpBarW, xpBarH);
+    this.xpBarGfx.fillStyle(0xbb6bd9);
+    this.xpBarGfx.fillRect(xpBarX, xpBarY, xpBarW * xpPct, xpBarH);
+
+    // Credits
+    this.creditsLabel.setText('CR: ' + (this.player.credits || 0)).setPosition(W - 10, 160).setOrigin(1, 0);
   }
 
   // ========== MINIMAP ==========

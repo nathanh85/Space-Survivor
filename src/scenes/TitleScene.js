@@ -81,7 +81,7 @@ export default class TitleScene extends Phaser.Scene {
       fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
     }).setOrigin(0.5);
 
-    this.add.text(W / 2, H - 20, 'v0.5.3 — P.E.S.T.S.', {
+    this.add.text(W / 2, H - 20, 'v0.5.4 — P.E.S.T.S.', {
       fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#333333',
     }).setOrigin(0.5);
 

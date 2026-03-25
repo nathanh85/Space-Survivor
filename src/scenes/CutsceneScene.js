@@ -67,23 +67,43 @@ export default class CutsceneScene extends Phaser.Scene {
     }
 
     // Text area at bottom
-    const boxY = H - 160;
+    const boxY = H - 180;
     const g2 = this.add.graphics();
     g2.fillStyle(0x000000, 0.9);
-    g2.fillRect(0, boxY, W, 160);
+    g2.fillRect(0, boxY, W, 180);
     g2.lineStyle(1, 0x00d4ff, 0.3);
-    g2.strokeRect(0, boxY, W, 160);
+    g2.strokeRect(0, boxY, W, 180);
+
+    // Portrait (left side)
+    const pMap = { pepper: 'pepper_neutral', pax: 'pax_neutral', 'M.O.T.H.E.R.': 'mother',
+      grix: 'grix', 'commander vera': 'vera', '???': 'informant' };
+    const pKey = pMap[(this.beat.speaker || '').toLowerCase()] || pMap[this.beat.speaker] || null;
+    const portraitX = 16, portraitY = boxY + 12, pSize = 96;
+    const textOffset = pKey ? pSize + 24 : 30;
+
+    if (pKey && this.textures.exists(pKey)) {
+      this.cutscenePortrait = this.add.image(portraitX + pSize / 2, portraitY + pSize / 2, pKey)
+        .setDisplaySize(pSize, pSize);
+    } else if (pKey) {
+      // Colored rect fallback
+      const colors = { pepper: 0x87CEEB, pax: 0xe67e22, 'M.O.T.H.E.R.': 0xe74c3c };
+      const c = colors[(this.beat.speaker || '').toLowerCase()] || 0x1a2a3a;
+      g2.fillStyle(c, 0.3);
+      g2.fillRect(portraitX, portraitY, pSize, pSize);
+      g2.lineStyle(1, c, 0.6);
+      g2.strokeRect(portraitX, portraitY, pSize, pSize);
+    }
 
     // Speaker name
     const speakerColor = getSpeakerColor(this.beat.speaker);
-    this.add.text(30, boxY + 12, (this.beat.speaker || '').toUpperCase(), {
+    this.add.text(textOffset, boxY + 12, (this.beat.speaker || '').toUpperCase(), {
       fontSize: '13px', fontFamily: '"Press Start 2P", monospace', fontStyle: 'bold', color: speakerColor,
     });
 
     // Dialogue text
-    this.dialogueText = this.add.text(30, boxY + 34, '', {
+    this.dialogueText = this.add.text(textOffset, boxY + 34, '', {
       fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#cccccc',
-      wordWrap: { width: W - 60 },
+      wordWrap: { width: W - textOffset - 30 },
       lineSpacing: 4,
     });
 

@@ -75,7 +75,7 @@ export const STORY_BEATS = [
     trigger: 'near_asteroid_first',
     speaker: 'pepper',
     portrait: null,
-    lines: ["I reckon that rock's got iron in it. Try clicking on it, Pax!"]
+    lines: ["See that rock? Shoot it, Pax! Bust it open and let's see what's inside."]
   },
   {
     id: 'bark_first_mine',
@@ -83,7 +83,15 @@ export const STORY_BEATS = [
     trigger: 'first_mine_complete',
     speaker: 'pepper',
     portrait: null,
-    lines: ["Nice haul! I can already think of ten things to build with that."]
+    lines: ["Nice shootin'! Grab that loot before it drifts away!"]
+  },
+  {
+    id: 'bark_big_haul',
+    type: 'bark',
+    trigger: 'asteroid_dropped_3_plus',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Jackpot! That rock was loaded!"]
   },
   {
     id: 'bark_fuel_half',

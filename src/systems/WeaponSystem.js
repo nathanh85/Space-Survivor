@@ -46,13 +46,27 @@ export default class WeaponSystem {
     proj.body.setVelocity(cos * this.weapon.projectileSpeed, sin * this.weapon.projectileSpeed);
 
     proj._damage = this.weapon.damage;
+    proj._spawnX = spawnX;
+    proj._spawnY = spawnY;
+    proj._maxRange = 500;
 
-    // Despawn timer
+    // Despawn timer (backup)
     this.scene.time.delayedCall(this.weapon.projectileLifetime, () => {
       if (proj && proj.active) proj.destroy();
     });
 
     return proj;
+  }
+
+  update() {
+    // Range-limit projectiles
+    this.projectiles.getChildren().forEach(proj => {
+      if (!proj || !proj.active) return;
+      if (proj._spawnX !== undefined) {
+        const dist = Phaser.Math.Distance.Between(proj._spawnX, proj._spawnY, proj.x, proj.y);
+        if (dist > (proj._maxRange || 500)) proj.destroy();
+      }
+    });
   }
 
   getWeaponName() {

@@ -3,7 +3,7 @@ export const NPCS = [
     id: 'merchant_grix',
     name: 'Grix',
     type: 'merchant',
-    portrait: 'npc_merchant1',
+    portrait: 'grix',
     personality: 'Talks too fast, enthusiastic, slightly shady, heart of gold',
     dialogue: {
       greeting: "Well well WELL! If it ain't Paxton and Pepper! The Zion kids! In MY station!",
@@ -19,7 +19,7 @@ export const NPCS = [
     id: 'quest_vera',
     name: 'Commander Vera',
     type: 'quest_giver',
-    portrait: 'npc_quest1',
+    portrait: 'vera',
     personality: 'Tired Outrider station commander, dry humor, seen too much',
     dialogue: {
       greeting: "Another ship. Great. At least you ain't shooting at us.",
@@ -34,7 +34,7 @@ export const NPCS = [
     id: 'info_whisper',
     name: '???',
     type: 'informant',
-    portrait: 'npc_informant',
+    portrait: 'informant',
     personality: 'Mysterious, speaks in fragments, knows too much about M.O.T.H.E.R.',
     dialogue: {
       greeting: "...You're the Zion kids. The ones M.O.T.H.E.R.'s been lookin' for.",

@@ -7,6 +7,7 @@ import {
   REGIONS, PLANET_TYPES, SYSTEM_NAMES, DUNGEON_TYPES,
   STATION_PREFIXES, STATION_SUFFIXES
 } from '../config/constants.js';
+import { getAvailableResources } from '../data/resources.js';
 
 export function generateUniverse(seed = 42) {
   const rng = new RNG(seed);
@@ -108,13 +109,20 @@ export function generateSystem(sysData, universeData) {
     // Minimum spacing: skip if too close to existing asteroid
     const tooClose = system.asteroids.some(e => Math.hypot(ax - e.x, ay - e.y) < 40);
     if (tooClose) continue;
+    const aSize = rng.int(10, 23);
+    const aResources = getAvailableResources(sysData.danger);
+    const resId = aResources.length > 0 ? rng.pick(aResources) : 'iron';
     system.asteroids.push({
       x: ax, y: ay,
-      size: rng.int(10, 23),
+      size: aSize,
+      hp: aSize * 3,
+      maxHp: aSize * 3,
       color: rng.pick(['#8B7355', '#A0A0A0', '#6B6B6B', '#9B7653']),
       rotation: rng.float(0, Math.PI * 2),
       rotSpeed: rng.float(-0.015, 0.015),
       shapeSeed: rng.int(1, 999999),
+      resourceId: resId,
+      mined: false,
     });
   }
 
