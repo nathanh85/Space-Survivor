@@ -1623,6 +1623,10 @@ export default class FlightScene extends Phaser.Scene {
     this.time.delayedCall(1000, () => {
       this.cameras.main.fadeOut(800, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => {
+        // CRITICAL: Reset the camera fade effect so it stops covering everything.
+        // The fade paints an opaque black fill over ALL rendered objects.
+        // We replace it with our own overlay rectangle that respects depth sorting.
+        this.cameras.main.resetFX();
         this.showDeathScreen();
       });
     });
