@@ -31,7 +31,9 @@ export default class FlightScene extends Phaser.Scene {
     portraits.forEach(p => {
       this.load.image(p, `assets/portraits/${p}.png`);
     });
-    this.load.on('loaderror', () => {}); // Suppress missing file errors
+    this.load.on('loaderror', (file) => {
+      console.warn('[PORTRAIT] Failed to load:', file.key, file.url);
+    });
   }
 
   create() {

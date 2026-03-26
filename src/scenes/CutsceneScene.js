@@ -40,6 +40,19 @@ export default class CutsceneScene extends Phaser.Scene {
     this.lineComplete = false;
   }
 
+  preload() {
+    // Load portraits here too — CutsceneScene may launch before FlightScene finishes loading
+    const portraits = [
+      'pax_neutral', 'pepper_neutral', 'mother', 'marshal', 'judge',
+      'grix', 'vera', 'informant', 'miner', 'smuggler', 'commander', 'mechanic'
+    ];
+    portraits.forEach(p => {
+      if (!this.textures.exists(p)) {
+        this.load.image(p, `assets/portraits/${p}.png`);
+      }
+    });
+  }
+
   create() {
     if (!this.beat) {
       this.closeCutscene();
