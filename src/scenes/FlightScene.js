@@ -1633,32 +1633,37 @@ export default class FlightScene extends Phaser.Scene {
     const H = this.scale.height;
     const elements = [];
 
-    // Black overlay
+    // Black overlay (BELOW all death content)
     const overlay = this.add.rectangle(W / 2, H / 2, W * 2, H * 2, 0x000000)
-      .setScrollFactor(0).setDepth(900);
+      .setScrollFactor(0).setDepth(998);
     elements.push(overlay);
 
-    // M.O.T.H.E.R. portrait (or fallback)
+    // Interactive click zone (ABOVE overlay, BELOW content)
+    const clickZone = this.add.rectangle(W / 2, H / 2, W * 2, H * 2, 0x000000, 0)
+      .setScrollFactor(0).setDepth(999).setInteractive({ useHandCursor: true });
+    elements.push(clickZone);
+
+    // M.O.T.H.E.R. portrait (or fallback) — ABOVE overlay + click zone
     const portraitX = W * 0.25, portraitY = H * 0.4;
     const pKey = 'mother';
     if (this.textures.exists(pKey)) {
       const img = this.add.image(portraitX, portraitY, pKey).setDisplaySize(96, 96)
-        .setScrollFactor(0).setDepth(901).setAlpha(0);
+        .setScrollFactor(0).setDepth(1000).setAlpha(0);
       this.tweens.add({ targets: img, alpha: 1, duration: 600 });
       elements.push(img);
     } else {
-      const pg = this.add.graphics().setScrollFactor(0).setDepth(901);
+      const pg = this.add.graphics().setScrollFactor(0).setDepth(1000);
       pg.fillStyle(0xe74c3c, 0.3);
       pg.fillRect(portraitX - 48, portraitY - 48, 96, 96);
       pg.lineStyle(1, 0xe74c3c, 0.6);
       pg.strokeRect(portraitX - 48, portraitY - 48, 96, 96);
       const init = this.add.text(portraitX, portraitY, 'M', {
         fontSize: '32px', fontFamily: FONT, color: '#e74c3c',
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(902);
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
       elements.push(pg, init);
     }
 
-    // Amber typewriter text lines
+    // Amber typewriter text lines — depth 1000
     const lines = [
       'M.O.T.H.E.R.',
       "VESSEL 'DUSTKICKER' HAS BEEN PROCESSED.",
@@ -1670,7 +1675,7 @@ export default class FlightScene extends Phaser.Scene {
     lines.forEach((line, i) => {
       const t = this.add.text(textX, startY + i * 28, '', {
         fontSize: '10px', fontFamily: FONT, color: '#f39c12',
-      }).setScrollFactor(0).setDepth(901);
+      }).setScrollFactor(0).setDepth(1000);
       deathTexts.push(t);
       elements.push(t);
     });
@@ -1692,36 +1697,30 @@ export default class FlightScene extends Phaser.Scene {
       },
     });
 
-    // Penalty text
+    // Penalty text — depth 1000
     const creditsLost = Math.floor(this.player.credits * 0.25);
     const penaltyText = this.add.text(textX, startY + lines.length * 28 + 20,
       `Credits confiscated: -${creditsLost}\nHull repaired to 50%`, {
       fontSize: '8px', fontFamily: FONT, color: '#888888', lineSpacing: 4,
-    }).setScrollFactor(0).setDepth(901).setAlpha(0);
+    }).setScrollFactor(0).setDepth(1000).setAlpha(0);
     elements.push(penaltyText);
     this.time.delayedCall(3000, () => this.tweens.add({ targets: penaltyText, alpha: 1, duration: 600 }));
 
-    // Click hint
+    // Click hint — depth 1000
     const hint = this.add.text(W / 2, H * 0.75, '[Click or SPACE to continue]', {
       fontSize: '8px', fontFamily: FONT, color: '#555555',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(901).setAlpha(0);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1000).setAlpha(0);
     elements.push(hint);
     this.time.delayedCall(3500, () => this.tweens.add({ targets: hint, alpha: 1, duration: 400 }));
 
-    // Cleanup + respawn
+    // Cleanup + respawn — NO auto-timer, player MUST click or SPACE
     let respawnReady = false;
     const cleanup = () => {
-      if (!this.playerDead) return; // prevent double-fire
+      if (!this.playerDead) return;
       typeTimer.remove();
-      if (clickZone) clickZone.destroy();
       elements.forEach(e => e.destroy());
       this.respawnPlayer();
     };
-
-    // Interactive click zone that captures ALL input (blocks FlightScene listeners)
-    const clickZone = this.add.rectangle(W / 2, H / 2, W * 2, H * 2, 0x000000, 0)
-      .setScrollFactor(0).setDepth(999).setInteractive({ useHandCursor: true });
-    elements.push(clickZone);
 
     clickZone.on('pointerdown', () => {
       if (respawnReady) cleanup();
@@ -1732,11 +1731,6 @@ export default class FlightScene extends Phaser.Scene {
 
     // Enable respawn after 2s (let typewriter play)
     this.time.delayedCall(2000, () => { respawnReady = true; });
-
-    // Auto-respawn after 10s
-    this.time.delayedCall(10000, () => {
-      if (this.playerDead) cleanup();
-    });
   }
 
   respawnPlayer() {
@@ -1851,7 +1845,7 @@ export default class FlightScene extends Phaser.Scene {
     this.versionText.setPosition(W - 10, H - 22);
 
     // Combat HUD
-    this.weaponLabel.setText('LASER  DMG:' + this.weaponSystem.getDamage() + '  RNG:' + this.weaponSystem.getRange()).setPosition(10, 102);
+    this.weaponLabel.setText('LASER  DMG:' + this.weaponSystem.getDamage()).setPosition(10, 102);
     const hostiles = this.enemyManager.getEnemyCount();
     if (hostiles > 0) {
       this.hostileLabel.setText('HOSTILES: ' + hostiles).setPosition(W - 10, 140).setOrigin(1, 0).setVisible(true);
