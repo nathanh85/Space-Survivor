@@ -16,10 +16,17 @@ import SoundManager from '../systems/SoundManager.js';
 import TextQueue from '../systems/TextQueue.js';
 import WeaponSystem from '../systems/WeaponSystem.js';
 import EnemyManager from '../systems/EnemyManager.js';
+import SaveManager from '../systems/SaveManager.js';
+import QuestManager from '../systems/QuestManager.js';
+import { getQuest } from '../data/quests.js';
 
 export default class FlightScene extends Phaser.Scene {
   constructor() {
     super({ key: 'FlightScene' });
+  }
+
+  init(data) {
+    this._initData = data || {};
   }
 
   preload() {
@@ -87,6 +94,14 @@ export default class FlightScene extends Phaser.Scene {
     this.starDamageCooldown = 0;
     this.asteroidDamageCooldown = 0;
     this.systemHadEnemies = false;
+
+    // Quest manager
+    this.questManager = new QuestManager();
+
+    // Trade UI state
+    this.tradeOpen = false;
+    this.tradeObjects = [];
+    this._firstSellBark = false;
 
     // Idle bark timer
     this.lastActivityTime = 0;
@@ -195,6 +210,15 @@ export default class FlightScene extends Phaser.Scene {
       fontSize: '8px', fontFamily: FONT, color: '#f39c12',
     }).setScrollFactor(0).setDepth(501);
 
+    // Save indicator
+    this.saveIndicator = this.add.text(0, 0, '\uD83D\uDCBE SAVED', {
+      fontSize: '10px', fontFamily: FONT, color: '#2ecc71',
+    }).setOrigin(1, 1).setScrollFactor(0).setDepth(600).setAlpha(0);
+
+    // Quest HUD texts (below main bars)
+    this.questHudTexts = [];
+    this.questHudGfx = this.add.graphics().setScrollFactor(0).setDepth(500);
+
     // Prompt text with background for visibility
     this.promptText = this.add.text(0, 0, '', {
       fontSize: '10px', fontFamily: FONT, color: '#00d4ff',
@@ -243,7 +267,13 @@ export default class FlightScene extends Phaser.Scene {
     // Enter starting system
     const start = this.universe.find(s => s.region.key === 'CORE') || this.universe[0];
     this.startingSystemId = start.id;
-    this.enterSystem(start.id);
+
+    // Check if resuming from save
+    if (this._initData && this._initData.fromSave) {
+      this.restoreFromSave(SaveManager.load());
+    } else {
+      this.enterSystem(start.id);
+    }
 
     // Combat collision setup
     this.setupCombatCollisions();
@@ -252,24 +282,30 @@ export default class FlightScene extends Phaser.Scene {
     this.cameras.main.setAlpha(0);
     this.lastActivityTime = Date.now();
 
-    // Fire game_start cutscene immediately
-    this.time.delayedCall(100, () => {
-      const beat = getStoryBeat('game_start');
-      if (beat && !this.firedTriggers.has(beat.id)) {
-        this.firedTriggers.add(beat.id);
-        this.scene.launch('CutsceneScene', { beatId: beat.id });
-        this.scene.pause();
-        // When cutscene ends, FlightScene resumes — fade in there
-        this.events.on('resume', () => {
+    // Fire game_start cutscene immediately (skip if from save)
+    if (this._initData && this._initData.fromSave) {
+      // From save — skip cutscene, just fade in
+      this.cameras.main.setAlpha(1);
+      this.cameras.main.fadeIn(500, 0, 0, 0);
+    } else {
+      this.time.delayedCall(100, () => {
+        const beat = getStoryBeat('game_start');
+        if (beat && !this.firedTriggers.has(beat.id)) {
+          this.firedTriggers.add(beat.id);
+          this.scene.launch('CutsceneScene', { beatId: beat.id });
+          this.scene.pause();
+          // When cutscene ends, FlightScene resumes — fade in there
+          this.events.on('resume', () => {
+            this.cameras.main.setAlpha(1);
+            this.cameras.main.fadeIn(800, 0, 0, 0);
+          });
+        } else {
+          // No cutscene (returning player) — just fade in
           this.cameras.main.setAlpha(1);
-          this.cameras.main.fadeIn(800, 0, 0, 0);
-        });
-      } else {
-        // No cutscene (returning player) — just fade in
-        this.cameras.main.setAlpha(1);
-        this.cameras.main.fadeIn(500, 0, 0, 0);
-      }
-    });
+          this.cameras.main.fadeIn(500, 0, 0, 0);
+        }
+      });
+    }
   }
 
   // ========== SYSTEM MANAGEMENT ==========
@@ -317,6 +353,16 @@ export default class FlightScene extends Phaser.Scene {
     this.currentSystem = this.systemCache[sysId];
     this.visited.add(sysId);
     this.revealFog(sysData.col, sysData.row, 2);
+
+    // Quest progress: visit_system
+    if (isFirstVisit && this.questManager) {
+      const visitReady = this.questManager.updateProgress('visit_system', {});
+      if (visitReady.length > 0) {
+        this.time.delayedCall(3000, () => {
+          this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: That's enough systems scouted. Let's report back." } });
+        });
+      }
+    }
 
     const sys = this.currentSystem;
     this.assignResources(sys.asteroids, sysData, sys.planets);
@@ -393,6 +439,114 @@ export default class FlightScene extends Phaser.Scene {
       for (let x = col - radius; x <= col + radius; x++)
         if (x >= 0 && x < UNIVERSE_COLS && y >= 0 && y < UNIVERSE_ROWS)
           this.fog.add(`${x}_${y}`);
+  }
+
+  // ========== SAVE SYSTEM ==========
+
+  buildSaveState() {
+    return {
+      version: 'v0.6.0',
+      timestamp: Date.now(),
+      player: {
+        level: this.player.level,
+        xp: this.player.xp,
+        hull: this.player.hull,
+        maxHull: this.player.maxHull,
+        shield: this.player.shield,
+        maxShield: this.player.maxShield,
+        fuel: this.player.fuel,
+        credits: this.player.credits,
+        weaponDamage: this.weaponSystem.weapon.damage,
+        xpNext: this.player.xpNext,
+      },
+      inventory: this.inventory.slots.map(s => s ? { ...s } : null),
+      universe: {
+        currentSystem: this.currentSystemId,
+        visitedSystems: [...this.visited],
+        clearedSystems: this._clearedSystems || [],
+      },
+      story: {
+        firedTriggers: [...this.firedTriggers],
+        completedQuests: this.questManager.completedQuests,
+        activeQuests: JSON.parse(JSON.stringify(this.questManager.activeQuests)),
+        npcStates: {},
+      },
+      settings: {},
+    };
+  }
+
+  restoreFromSave(saveData) {
+    if (!saveData) return;
+    const p = saveData.player;
+    const u = saveData.universe;
+    const s = saveData.story;
+
+    // Enter saved system
+    this.enterSystem(u.currentSystem);
+
+    // Player stats
+    this.player.level = p.level || 1;
+    this.player.xp = p.xp || 0;
+    this.player.hull = p.hull;
+    this.player.maxHull = p.maxHull || 100;
+    this.player.shield = p.shield;
+    this.player.maxShield = p.maxShield || 50;
+    this.player.fuel = p.fuel;
+    this.player.credits = p.credits || 0;
+    this.player.xpNext = p.xpNext || 100;
+    if (p.weaponDamage && this.weaponSystem) {
+      this.weaponSystem.weapon.damage = p.weaponDamage;
+    }
+
+    // Inventory
+    if (saveData.inventory) {
+      for (let i = 0; i < saveData.inventory.length; i++) {
+        this.inventory.slots[i] = saveData.inventory[i] ? { ...saveData.inventory[i] } : null;
+      }
+    }
+
+    // Visited systems + fog
+    if (u.visitedSystems) {
+      for (const id of u.visitedSystems) {
+        this.visited.add(id);
+        const sys = this.universe.find(x => x.id === id);
+        if (sys) this.revealFog(sys.col, sys.row, 2);
+      }
+    }
+    this._clearedSystems = u.clearedSystems || [];
+
+    // Story triggers
+    if (s.firedTriggers) {
+      for (const t of s.firedTriggers) this.firedTriggers.add(t);
+    }
+
+    // Quest state
+    this.questManager.deserialize({
+      activeQuests: s.activeQuests || [],
+      completedQuests: s.completedQuests || [],
+    });
+
+    // Skip intro triggers
+    this.firedTriggers.add('act1_intro');
+    this.firstWarpDone = true;
+    this.firstMineComplete = true;
+    this.nearAsteroidTriggered = true;
+  }
+
+  autoSave() {
+    const state = this.buildSaveState();
+    SaveManager.save(state);
+    this.showSaveIndicator();
+  }
+
+  showSaveIndicator() {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    this.saveIndicator.setPosition(W - 14, H - 40);
+    this.tweens.add({ targets: this.saveIndicator, alpha: 1, duration: 300 });
+    this.time.delayedCall(2000, () => {
+      this.tweens.add({ targets: this.saveIndicator, alpha: 0, duration: 500 });
+    });
   }
 
   // ========== STATIC DRAWING ==========
@@ -720,6 +874,10 @@ export default class FlightScene extends Phaser.Scene {
       return;
     }
 
+    if (this.tradeOpen) {
+      return;
+    }
+
     // Player
     this.player.update(this.cursors, this.input.activePointer);
 
@@ -998,7 +1156,15 @@ export default class FlightScene extends Phaser.Scene {
       this.promptText.setText('[E] WARP \u2192 ' + gt.targetName + (gt.isDungeon ? ' \u26A0 DUNGEON' : ''))
         .setColor(gt.isDungeon ? '#ff00ff' : '#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
     } else if (this.nearStation) {
-      const dockLabel = this.outOfFuel ? '[F] Emergency Dock — Free Fuel' : '[F] Dock at ' + this.nearStation.name;
+      const npc = this.nearStation.npc;
+      let dockLabel;
+      if (this.outOfFuel) {
+        dockLabel = '[F] Emergency Dock \u2014 Free Fuel';
+      } else if (npc && npc.type === 'merchant') {
+        dockLabel = '[F] Trade at ' + this.nearStation.name;
+      } else {
+        dockLabel = '[F] Dock at ' + this.nearStation.name;
+      }
       this.promptText.setText(dockLabel)
         .setColor(this.outOfFuel ? '#f1c40f' : '#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
     } else {
@@ -1259,8 +1425,9 @@ export default class FlightScene extends Phaser.Scene {
         if (charIdx >= displayText.length) {
           this._barkTypewriter.remove();
           this._barkTypewriter = null;
-          // Text complete — start 6s hold timer
-          this.barkTimer = this.time.delayedCall(6000, () => {
+          // Text complete — hold timer (3s if chained, 6s standalone)
+          const holdTime = this.textQueue.getBarkHoldTime();
+          this.barkTimer = this.time.delayedCall(holdTime, () => {
             for (const obj of this.barkObjects) {
               this.tweens.add({ targets: obj, alpha: 0, duration: 300 });
             }
@@ -1440,6 +1607,9 @@ export default class FlightScene extends Phaser.Scene {
 
     // Pepper bark
     this.fireBark('level_up');
+
+    // Auto-save on level up
+    this.autoSave();
   }
 
   _spawnHitSparks(color, count) {
@@ -1587,6 +1757,12 @@ export default class FlightScene extends Phaser.Scene {
       }
     }
 
+    // Quest progress: kill_enemy
+    const killReady = this.questManager.updateProgress('kill_enemy', { enemy: 'tin_badge' });
+    if (killReady.length > 0) {
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: That's the last one for the job! Time to report in." } });
+    }
+
     // XP
     this.player.xp += enemy.xp || 10;
     const xpText = this.add.text(enemy.x, enemy.y - 20, '+' + (enemy.xp || 10) + ' XP', {
@@ -1662,6 +1838,11 @@ export default class FlightScene extends Phaser.Scene {
           this.inventory.addItem(item._lootType, item._lootAmount);
           const res = RESOURCES[item._lootType];
           label = '+' + item._lootAmount + ' ' + (res ? res.name : item._lootType);
+          // Quest progress: collect_resource
+          const qReady = this.questManager.updateProgress('collect_resource', { resource: item._lootType, amount: item._lootAmount });
+          if (qReady.length > 0) {
+            this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: That's everything for the quest! Let's go turn it in." } });
+          }
         }
 
         const ft = this.add.text(item.x, item.y - 10, label, {
@@ -1892,8 +2073,9 @@ export default class FlightScene extends Phaser.Scene {
   // ========== NPC DOCKING / HUB LANDING ==========
 
   tryDockOrLand() {
-    if (this.invOpen || this.dialogueActive) return;
+    if (this.invOpen || this.dialogueActive || this.tradeOpen) return;
     if (this.nearPlanetZion) {
+      this.autoSave();
       this.sound_mgr.stopAll();
       this.scene.pause('FlightScene');
       this.scene.launch('HubScene');
@@ -1905,24 +2087,95 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   tryDock() {
-    if (!this.nearStation || this.invOpen) return;
+    if (!this.nearStation || this.invOpen || this.tradeOpen) return;
+    this.autoSave();
     // Emergency fuel refill
     if (this.outOfFuel) {
       this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + 25);
     }
     const npc = this.nearStation.npc;
     if (!npc) return;
+
+    // Quest-aware NPC interaction
+    // 1. Check for completable quest
+    const completeQuest = this.questManager.getActiveQuestForNPC(npc.id);
+    if (completeQuest && this.questManager.isQuestComplete(completeQuest.id)) {
+      this.dialogueActive = true;
+      const beat = {
+        speaker: npc.name, portrait: npc.portrait,
+        lines: completeQuest.dialogue.complete,
+        choices: null,
+      };
+      this.dialogueUI.show(beat, () => {
+        this.dialogueActive = false;
+        const rewards = this.questManager.turnInQuest(completeQuest.id, this.inventory);
+        if (rewards) {
+          if (rewards.credits) this.player.credits += rewards.credits;
+          if (rewards.xp) {
+            this.player.xp += rewards.xp;
+            if (this.player.xp >= this.player.xpNext) {
+              this.player.level++;
+              this.player.xp -= this.player.xpNext;
+              this.player.xpNext = Math.floor(this.player.xpNext * 1.5);
+              this.onLevelUp();
+            }
+          }
+          if (rewards.fuel) this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + rewards.fuel);
+          // Reward popup
+          let rewardStr = 'Rewards:';
+          if (rewards.credits) rewardStr += ' +' + rewards.credits + ' CR';
+          if (rewards.xp) rewardStr += ' +' + rewards.xp + ' XP';
+          if (rewards.fuel) rewardStr += ' +' + rewards.fuel + ' Fuel';
+          this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: Quest complete! ' + rewardStr } });
+          this.autoSave();
+        }
+      });
+      return;
+    }
+
+    // 2. Check for in-progress quest
+    if (completeQuest && !this.questManager.isQuestComplete(completeQuest.id)) {
+      this.dialogueActive = true;
+      const beat = {
+        speaker: npc.name, portrait: npc.portrait,
+        lines: completeQuest.dialogue.inProgress,
+        choices: null,
+      };
+      this.dialogueUI.show(beat, () => { this.dialogueActive = false; });
+      return;
+    }
+
+    // 3. Check for available quest
+    const availQuest = this.questManager.getAvailableQuestForNPC(npc.id, this.player.level);
+    if (availQuest) {
+      this.dialogueActive = true;
+      const beat = {
+        speaker: npc.name, portrait: npc.portrait,
+        lines: availQuest.dialogue.offer,
+        choices: null,
+      };
+      this.dialogueUI.show(beat, () => {
+        this.dialogueActive = false;
+        this.questManager.acceptQuest(availQuest.id);
+        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: New quest accepted! Check the HUD." } });
+      });
+      return;
+    }
+
+    // 4. Merchant — open trade UI
+    if (npc.type === 'merchant') {
+      this.showTradeUI(npc);
+      return;
+    }
+
+    // 5. Default NPC dialogue
     this.dialogueActive = true;
     const lines = this.getNPCDialogueLines(npc);
     const beat = {
-      speaker: npc.name,
-      portrait: npc.portrait,
-      lines: lines,
-      choices: null,
+      speaker: npc.name, portrait: npc.portrait,
+      lines: lines, choices: null,
     };
-    this.dialogueUI.show(beat, () => {
-      this.dialogueActive = false;
-    });
+    this.dialogueUI.show(beat, () => { this.dialogueActive = false; });
   }
 
   getNPCDialogueLines(npc) {
@@ -1931,6 +2184,190 @@ export default class FlightScene extends Phaser.Scene {
     if (npc.type === 'quest_giver') return [d.greeting, d.quest_offer, d.farewell];
     if (npc.type === 'informant') return [d.greeting, d.hint, d.farewell];
     return [d.greeting || 'Hello.', d.farewell || 'Goodbye.'];
+  }
+
+  // ========== TRADE UI ==========
+
+  showTradeUI(npc) {
+    this.tradeOpen = true;
+    this._tradeNpc = npc;
+    this._renderTradeUI();
+  }
+
+  _renderTradeUI() {
+    // Cleanup previous
+    for (const obj of this.tradeObjects) { if (obj && obj.destroy) obj.destroy(); }
+    this.tradeObjects = [];
+
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const pw = 420, ph = 340;
+    const px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+
+    // Background
+    const bg = this.add.graphics().setScrollFactor(0).setDepth(700);
+    bg.fillStyle(0x0a0a1a, 0.95);
+    bg.fillRect(px, py, pw, ph);
+    bg.lineStyle(2, 0xf39c12, 0.6);
+    bg.strokeRect(px, py, pw, ph);
+    this.tradeObjects.push(bg);
+
+    // Title
+    const npcName = this._tradeNpc ? this._tradeNpc.name : 'TRADER';
+    const title = this.add.text(W / 2, py + 16, npcName.toUpperCase() + "'S TRADING POST", {
+      fontSize: '11px', fontFamily: FONT, color: '#f39c12', fontStyle: 'bold',
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(701);
+    this.tradeObjects.push(title);
+
+    // Resource list
+    const resourceMap = {};
+    for (const slot of this.inventory.slots) {
+      if (!slot) continue;
+      if (!resourceMap[slot.resourceId]) resourceMap[slot.resourceId] = 0;
+      resourceMap[slot.resourceId] += slot.count;
+    }
+
+    let y = py + 42;
+    const entries = Object.entries(resourceMap);
+    if (entries.length === 0) {
+      const empty = this.add.text(W / 2, py + ph / 2 - 20, 'Nothing to sell!', {
+        fontSize: '10px', fontFamily: FONT, color: '#666',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(701);
+      this.tradeObjects.push(empty);
+    } else {
+      for (const [resId, qty] of entries) {
+        const res = RESOURCES[resId];
+        if (!res) continue;
+        const totalVal = res.value * qty;
+
+        const nameText = this.add.text(px + 16, y, res.name, {
+          fontSize: '9px', fontFamily: FONT, color: res.tier.color,
+        }).setScrollFactor(0).setDepth(701);
+        this.tradeObjects.push(nameText);
+
+        const qtyText = this.add.text(px + 180, y, 'x' + qty, {
+          fontSize: '9px', fontFamily: FONT, color: '#aaa',
+        }).setScrollFactor(0).setDepth(701);
+        this.tradeObjects.push(qtyText);
+
+        const valText = this.add.text(px + 240, y, totalVal + ' cr', {
+          fontSize: '9px', fontFamily: FONT, color: '#f1c40f',
+        }).setScrollFactor(0).setDepth(701);
+        this.tradeObjects.push(valText);
+
+        // SELL button
+        const sellBg = this.add.graphics().setScrollFactor(0).setDepth(701);
+        sellBg.fillStyle(0xf39c12, 0.15);
+        sellBg.fillRect(px + 320, y - 2, 60, 18);
+        sellBg.lineStyle(1, 0xf39c12, 0.5);
+        sellBg.strokeRect(px + 320, y - 2, 60, 18);
+        this.tradeObjects.push(sellBg);
+
+        const sellText = this.add.text(px + 350, y + 7, 'SELL', {
+          fontSize: '8px', fontFamily: FONT, color: '#f39c12',
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(702);
+        this.tradeObjects.push(sellText);
+
+        const sellZone = this.add.zone(px + 350, y + 7, 60, 18).setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
+        const capturedResId = resId;
+        sellZone.on('pointerdown', () => this._sellResource(capturedResId));
+        this.tradeObjects.push(sellZone);
+
+        y += 22;
+      }
+    }
+
+    // Credits total
+    const creditsText = this.add.text(px + 16, py + ph - 50, 'Credits: ' + (this.player.credits || 0), {
+      fontSize: '10px', fontFamily: FONT, color: '#f1c40f',
+    }).setScrollFactor(0).setDepth(701);
+    this.tradeObjects.push(creditsText);
+
+    // SELL ALL button
+    if (entries.length > 0) {
+      const saBg = this.add.graphics().setScrollFactor(0).setDepth(701);
+      saBg.fillStyle(0xe74c3c, 0.15);
+      saBg.fillRect(px + pw - 110, py + ph - 52, 90, 22);
+      saBg.lineStyle(1, 0xe74c3c, 0.5);
+      saBg.strokeRect(px + pw - 110, py + ph - 52, 90, 22);
+      this.tradeObjects.push(saBg);
+
+      const saText = this.add.text(px + pw - 65, py + ph - 41, 'SELL ALL', {
+        fontSize: '8px', fontFamily: FONT, color: '#e74c3c',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(702);
+      this.tradeObjects.push(saText);
+
+      const saZone = this.add.zone(px + pw - 65, py + ph - 41, 90, 22).setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
+      saZone.on('pointerdown', () => this._sellAll());
+      this.tradeObjects.push(saZone);
+    }
+
+    // CLOSE button
+    const closeBg = this.add.graphics().setScrollFactor(0).setDepth(701);
+    closeBg.fillStyle(0x555555, 0.15);
+    closeBg.fillRect(px + pw / 2 - 40, py + ph - 26, 80, 20);
+    closeBg.lineStyle(1, 0x555555, 0.5);
+    closeBg.strokeRect(px + pw / 2 - 40, py + ph - 26, 80, 20);
+    this.tradeObjects.push(closeBg);
+
+    const closeText = this.add.text(W / 2, py + ph - 16, 'CLOSE', {
+      fontSize: '8px', fontFamily: FONT, color: '#aaa',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(702);
+    this.tradeObjects.push(closeText);
+
+    const closeZone = this.add.zone(W / 2, py + ph - 16, 80, 20).setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
+    closeZone.on('pointerdown', () => this.closeTradeUI());
+    this.tradeObjects.push(closeZone);
+  }
+
+  _sellResource(resourceId) {
+    const res = RESOURCES[resourceId];
+    if (!res) return;
+    const qty = this.inventory.countItem(resourceId);
+    if (qty <= 0) return;
+    const value = res.value * qty;
+    this.inventory.removeItem(resourceId, qty);
+    this.player.credits += value;
+    this.sound_mgr.playPickup();
+
+    // First sell bark
+    if (!this._firstSellBark) {
+      this._firstSellBark = true;
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: Credits in the bank! ...Well, credits in our pocket." } });
+    }
+
+    this._renderTradeUI();
+  }
+
+  _sellAll() {
+    let totalValue = 0;
+    const toSell = [];
+    for (const slot of this.inventory.slots) {
+      if (!slot) continue;
+      const res = RESOURCES[slot.resourceId];
+      if (!res) continue;
+      toSell.push({ id: slot.resourceId, qty: slot.count, val: res.value * slot.count });
+      totalValue += res.value * slot.count;
+    }
+    if (totalValue === 0) return;
+    for (const item of toSell) {
+      this.inventory.removeItem(item.id, item.qty);
+    }
+    this.player.credits += totalValue;
+    this.sound_mgr.playPickup();
+
+    if (!this._firstSellBark) {
+      this._firstSellBark = true;
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: Credits in the bank! ...Well, credits in our pocket." } });
+    }
+
+    this._renderTradeUI();
+  }
+
+  closeTradeUI() {
+    this.tradeOpen = false;
+    for (const obj of this.tradeObjects) { if (obj && obj.destroy) obj.destroy(); }
+    this.tradeObjects = [];
   }
 
   returnFromHub() {
@@ -1988,6 +2425,37 @@ export default class FlightScene extends Phaser.Scene {
 
     // Credits
     this.creditsLabel.setText('CR: ' + (this.player.credits || 0)).setPosition(W - 10, 160).setOrigin(1, 0);
+
+    // Quest HUD
+    this.questHudGfx.clear();
+    for (const t of this.questHudTexts) t.destroy();
+    this.questHudTexts = [];
+    if (this.questManager.activeQuests.length > 0) {
+      const q = this.questManager.activeQuests[0];
+      const qy = 140;
+      this.questHudGfx.fillStyle(0x000000, 0.4);
+      this.questHudGfx.fillRect(8, qy, 180, 14 + q.objectives.length * 14);
+      const qTitle = this.add.text(12, qy + 2, '\uD83D\uDCCB ' + q.name, {
+        fontSize: '8px', fontFamily: FONT, color: '#f39c12',
+      }).setScrollFactor(0).setDepth(501);
+      this.questHudTexts.push(qTitle);
+      for (let i = 0; i < q.objectives.length; i++) {
+        const obj = q.objectives[i];
+        let label = '';
+        if (obj.type === 'collect_resource') {
+          const res = RESOURCES[obj.resource];
+          label = (res ? res.name : obj.resource) + ': ' + obj.current + '/' + obj.target;
+        } else if (obj.type === 'kill_enemy') {
+          label = 'Kills: ' + obj.current + '/' + obj.target;
+        } else if (obj.type === 'visit_system') {
+          label = 'Systems: ' + obj.current + '/' + obj.target;
+        }
+        const objText = this.add.text(18, qy + 14 + i * 14, label, {
+          fontSize: '8px', fontFamily: FONT, color: obj.current >= obj.target ? '#2ecc71' : '#aaa',
+        }).setScrollFactor(0).setDepth(501);
+        this.questHudTexts.push(objText);
+      }
+    }
   }
 
   // ========== MINIMAP ==========
@@ -2141,6 +2609,8 @@ export default class FlightScene extends Phaser.Scene {
       universe: this.universe, currentId: this.currentSystemId,
       visited: this.visited, fog: this.fog,
       startingSystemId: this.startingSystemId,
+      clearedSystems: this._clearedSystems || [],
+      questManager: this.questManager,
       onWarp: (id) => { this.scene.resume('FlightScene'); const g = this.currentSystem.gates.find(x => x.targetId === id); if (g) this.startWarp(g); },
     });
   }

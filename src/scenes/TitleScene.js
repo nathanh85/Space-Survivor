@@ -1,8 +1,9 @@
 // ============================================================
-// Title Scene — start menu
+// Title Scene — start menu with save/load support
 // ============================================================
 
 import Phaser from 'phaser';
+import SaveManager from '../systems/SaveManager.js';
 
 export default class TitleScene extends Phaser.Scene {
   constructor() {
@@ -33,6 +34,8 @@ export default class TitleScene extends Phaser.Scene {
     const H = this.cameras.main.height;
     this.cameras.main.setBackgroundColor('#050510');
 
+    const hasSave = SaveManager.hasSave();
+
     // Background stars
     const gfx = this.add.graphics();
     for (let i = 0; i < 150; i++) {
@@ -61,60 +64,125 @@ export default class TitleScene extends Phaser.Scene {
     ship.fillStyle(0xe74c3c); ship.fillRect(-4, 10, 3, 2);
     ship.fillStyle(0x00aaff); ship.fillRect(4, -2, 4, 4);
 
-    // Start button
-    const btnY = H * 0.62;
-    const btn = this.add.graphics();
-    btn.fillStyle(0x00d4ff, 0.1);
-    btn.fillRect(W / 2 - 100, btnY - 18, 200, 36);
-    btn.lineStyle(1, 0x00d4ff, 0.6);
-    btn.strokeRect(W / 2 - 100, btnY - 18, 200, 36);
+    if (hasSave) {
+      // CONTINUE button
+      const contY = H * 0.58;
+      this._makeButton(W / 2, contY, 'CONTINUE', '#2ecc71', 0x2ecc71, () => this.continueGame());
 
-    const startText = this.add.text(W / 2, btnY, 'START GAME', {
-      fontSize: '14px', fontFamily: '"Press Start 2P", monospace', color: '#00d4ff', fontStyle: 'bold',
-    }).setOrigin(0.5);
+      // NEW GAME button
+      const newY = H * 0.66;
+      this._makeButton(W / 2, newY, 'NEW GAME', '#00d4ff', 0x00d4ff, () => this.confirmNewGame());
 
-    // Make button interactive
-    const hitZone = this.add.zone(W / 2, btnY, 200, 36).setInteractive({ useHandCursor: true });
-    hitZone.on('pointerover', () => {
-      btn.clear();
-      btn.fillStyle(0x00d4ff, 0.25);
-      btn.fillRect(W / 2 - 100, btnY - 18, 200, 36);
-      btn.lineStyle(1, 0x00d4ff, 1);
-      btn.strokeRect(W / 2 - 100, btnY - 18, 200, 36);
-    });
-    hitZone.on('pointerout', () => {
-      btn.clear();
-      btn.fillStyle(0x00d4ff, 0.1);
-      btn.fillRect(W / 2 - 100, btnY - 18, 200, 36);
-      btn.lineStyle(1, 0x00d4ff, 0.6);
-      btn.strokeRect(W / 2 - 100, btnY - 18, 200, 36);
-    });
-    hitZone.on('pointerdown', () => this.startGame());
+      // Pulse on continue
+      const contText = this.children.list.find(c => c.text === 'CONTINUE');
+      if (contText) {
+        this.tweens.add({ targets: contText, alpha: 0.5, duration: 800, yoyo: true, repeat: -1 });
+      }
+    } else {
+      // NEW GAME only
+      const btnY = H * 0.62;
+      this._makeButton(W / 2, btnY, 'NEW GAME', '#00d4ff', 0x00d4ff, () => this.startNewGame());
 
-    // Also start with SPACE or ENTER
-    this.input.keyboard.on('keydown-SPACE', () => this.startGame());
-    this.input.keyboard.on('keydown-ENTER', () => this.startGame());
+      const startText = this.children.list.find(c => c.text === 'NEW GAME');
+      if (startText) {
+        this.tweens.add({ targets: startText, alpha: 0.5, duration: 800, yoyo: true, repeat: -1 });
+      }
+    }
 
-    // Version / credits
-    this.add.text(W / 2, H * 0.75, '[SPACE] Thrust  |  [Click] Shoot/Mine  |  [M] Map  |  [TAB] Inventory', {
+    // Controls hint
+    this.add.text(W / 2, H * 0.78, '[SPACE] Thrust  |  [Click] Shoot/Mine  |  [M] Map  |  [TAB] Inventory', {
       fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
     }).setOrigin(0.5);
 
-    this.add.text(W / 2, H - 20, 'v0.5.7 — P.E.S.T.S.', {
+    // Version
+    this.add.text(W / 2, H - 20, 'v0.6.0 \u2014 P.E.S.T.S.', {
       fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#333333',
     }).setOrigin(0.5);
 
-    // Pulse animation on start text
-    this.tweens.add({
-      targets: startText, alpha: 0.5,
-      duration: 800, yoyo: true, repeat: -1,
+    // Keyboard shortcuts
+    if (hasSave) {
+      this.input.keyboard.on('keydown-SPACE', () => this.continueGame());
+      this.input.keyboard.on('keydown-ENTER', () => this.continueGame());
+    } else {
+      this.input.keyboard.on('keydown-SPACE', () => this.startNewGame());
+      this.input.keyboard.on('keydown-ENTER', () => this.startNewGame());
+    }
+  }
+
+  _makeButton(x, y, label, textColor, lineColor, onClick) {
+    const btn = this.add.graphics();
+    btn.fillStyle(lineColor, 0.1);
+    btn.fillRect(x - 100, y - 18, 200, 36);
+    btn.lineStyle(1, lineColor, 0.6);
+    btn.strokeRect(x - 100, y - 18, 200, 36);
+
+    const text = this.add.text(x, y, label, {
+      fontSize: '14px', fontFamily: '"Press Start 2P", monospace', color: textColor, fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    const hitZone = this.add.zone(x, y, 200, 36).setInteractive({ useHandCursor: true });
+    hitZone.on('pointerover', () => {
+      btn.clear();
+      btn.fillStyle(lineColor, 0.25);
+      btn.fillRect(x - 100, y - 18, 200, 36);
+      btn.lineStyle(1, lineColor, 1);
+      btn.strokeRect(x - 100, y - 18, 200, 36);
+    });
+    hitZone.on('pointerout', () => {
+      btn.clear();
+      btn.fillStyle(lineColor, 0.1);
+      btn.fillRect(x - 100, y - 18, 200, 36);
+      btn.lineStyle(1, lineColor, 0.6);
+      btn.strokeRect(x - 100, y - 18, 200, 36);
+    });
+    hitZone.on('pointerdown', onClick);
+  }
+
+  continueGame() {
+    this.cameras.main.fadeOut(500, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('FlightScene', { fromSave: true });
     });
   }
 
-  startGame() {
+  startNewGame() {
     this.cameras.main.fadeOut(500, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start('IntroScene');
+    });
+  }
+
+  confirmNewGame() {
+    // Show warning overlay
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+
+    const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.7).setDepth(100);
+    const warnText = this.add.text(W / 2, H * 0.4, 'Erase save and start over?', {
+      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#e74c3c',
+    }).setOrigin(0.5).setDepth(101);
+
+    const yesY = H * 0.52;
+    const yesText = this.add.text(W / 2 - 80, yesY, 'YES', {
+      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#e74c3c',
+    }).setOrigin(0.5).setDepth(101);
+    const yesZone = this.add.zone(W / 2 - 80, yesY, 80, 30).setDepth(102).setInteractive({ useHandCursor: true });
+    yesZone.on('pointerdown', () => {
+      SaveManager.deleteSave();
+      this.startNewGame();
+    });
+
+    const noText = this.add.text(W / 2 + 80, yesY, 'NO', {
+      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#2ecc71',
+    }).setOrigin(0.5).setDepth(101);
+    const noZone = this.add.zone(W / 2 + 80, yesY, 80, 30).setDepth(102).setInteractive({ useHandCursor: true });
+    noZone.on('pointerdown', () => {
+      overlay.destroy();
+      warnText.destroy();
+      yesText.destroy();
+      yesZone.destroy();
+      noText.destroy();
+      noZone.destroy();
     });
   }
 }

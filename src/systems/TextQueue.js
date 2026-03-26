@@ -1,10 +1,12 @@
 // ============================================================
 // Text Queue Manager — ensures only one text box at a time
 // Priority: dialogue > transmission > bark
+// v0.6.0: chain pacing — 500ms gap between barks, shorter hold in chains
 // ============================================================
 
 const PRIORITY = { bark: 0, transmission: 1, dialogue: 2 };
 const MIN_GAP = 5000; // 5 seconds between auto-triggered messages
+const DISMISS_DELAY = 500; // 500ms gap between chained barks
 
 export default class TextQueue {
   constructor() {
@@ -13,6 +15,7 @@ export default class TextQueue {
     this.lastFireTime = 0;
     this.onShowCallback = null;   // set by FlightScene
     this.onDismissCallback = null;
+    this._dismissTimeout = null;
   }
 
   /**
@@ -62,6 +65,25 @@ export default class TextQueue {
   }
 
   /**
+   * Check if there are pending items in the queue.
+   */
+  hasPending() {
+    return this.queue.length > 0;
+  }
+
+  /**
+   * Get the hold time for the current bark.
+   * If next item is also a bark (chain), use shorter 3s hold.
+   * Otherwise use standard 6s hold.
+   */
+  getBarkHoldTime() {
+    if (this.queue.length > 0 && this.queue[0].type === 'bark') {
+      return 3000; // chained bark — shorter hold
+    }
+    return 6000; // standalone bark — full hold
+  }
+
+  /**
    * Call when the active text box is done (timed out, clicked through, etc.)
    */
   dismiss() {
@@ -69,15 +91,25 @@ export default class TextQueue {
     this.active = null;
     if (was && this.onDismissCallback) this.onDismissCallback(was);
 
-    // Fire next after short delay
+    // Clear any pending dismiss timeout
+    if (this._dismissTimeout) {
+      clearTimeout(this._dismissTimeout);
+      this._dismissTimeout = null;
+    }
+
+    // Fire next after dismiss delay
     if (this.queue.length > 0) {
       // Sort by priority (highest first)
       this.queue.sort((a, b) => (PRIORITY[b.type] ?? 0) - (PRIORITY[a.type] ?? 0));
       const next = this.queue.shift();
-      setTimeout(() => {
+
+      // Apply 500ms gap when next item is a bark (chain pacing)
+      const delay = (was && was.type === 'bark' && next.type === 'bark') ? DISMISS_DELAY : 300;
+      this._dismissTimeout = setTimeout(() => {
+        this._dismissTimeout = null;
         if (!this.active) this.show(next);
         else this.queue.unshift(next); // put it back if something jumped in
-      }, 300);
+      }, delay);
     }
   }
 
@@ -85,6 +117,10 @@ export default class TextQueue {
    * Force-dismiss the active item (for dialogue opening, etc.)
    */
   dismissActive() {
+    if (this._dismissTimeout) {
+      clearTimeout(this._dismissTimeout);
+      this._dismissTimeout = null;
+    }
     if (this.active && this.onDismissCallback) {
       this.onDismissCallback(this.active);
     }
@@ -99,6 +135,10 @@ export default class TextQueue {
   }
 
   clear() {
+    if (this._dismissTimeout) {
+      clearTimeout(this._dismissTimeout);
+      this._dismissTimeout = null;
+    }
     this.active = null;
     this.queue = [];
   }
