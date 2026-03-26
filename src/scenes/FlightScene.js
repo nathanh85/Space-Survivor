@@ -1154,6 +1154,7 @@ export default class FlightScene extends Phaser.Scene {
   _dismissQueueItem(item) {
     if (item.type === 'bark') {
       if (this.barkTimer) this.barkTimer.remove();
+      if (this._barkTypewriter) { this._barkTypewriter.remove(); this._barkTypewriter = null; }
       // Clean up all bark game objects
       for (const obj of this.barkObjects) {
         if (obj && obj.destroy) obj.destroy();
@@ -1224,8 +1225,8 @@ export default class FlightScene extends Phaser.Scene {
     const prefixMatch = text.match(/^[A-Za-z.]+:\s*/);
     if (prefixMatch) displayText = text.slice(prefixMatch[0].length);
 
-    // Bark text
-    const barkText = this.add.text(W / 2 - 190, 62, displayText, {
+    // Bark text (starts empty — typewriter fills it)
+    const barkText = this.add.text(W / 2 - 190, 62, '', {
       fontSize: '11px', fontFamily: FONT, color: '#c8d8e8',
       wordWrap: { width: 380 },
     }).setScrollFactor(0).setDepth(801).setAlpha(0);
@@ -1236,19 +1237,43 @@ export default class FlightScene extends Phaser.Scene {
       this.tweens.add({ targets: obj, alpha: 1, duration: 200 });
     }
 
-    // Hold 3.5s, then fade out 300ms
+    // Typewriter effect — 40 chars/sec, then 6s hold after complete
     if (this.barkTimer) this.barkTimer.remove();
-    this.barkTimer = this.time.delayedCall(3500, () => {
-      for (const obj of this.barkObjects) {
-        this.tweens.add({ targets: obj, alpha: 0, duration: 300 });
-      }
-      this.time.delayedCall(300, () => {
-        for (const obj of this.barkObjects) {
-          if (obj && obj.destroy) obj.destroy();
+    if (this._barkTypewriter) this._barkTypewriter.remove();
+    let charIdx = 0;
+    const BARK_CHARS_PER_SEC = 40;
+    this._barkTypewriterText = displayText;
+    this._barkTypewriter = this.time.addEvent({
+      delay: 1000 / BARK_CHARS_PER_SEC, // 25ms per char
+      loop: true,
+      callback: () => {
+        charIdx++;
+        barkText.setText(displayText.substring(0, charIdx));
+        // Tick sound on alphanumeric chars
+        if (charIdx <= displayText.length) {
+          const ch = displayText[charIdx - 1];
+          if (ch && /[a-zA-Z0-9]/.test(ch)) {
+            this.sound_mgr.playTypewriterTick(sp);
+          }
         }
-        this.barkObjects = [];
-        this.textQueue.dismiss();
-      });
+        if (charIdx >= displayText.length) {
+          this._barkTypewriter.remove();
+          this._barkTypewriter = null;
+          // Text complete — start 6s hold timer
+          this.barkTimer = this.time.delayedCall(6000, () => {
+            for (const obj of this.barkObjects) {
+              this.tweens.add({ targets: obj, alpha: 0, duration: 300 });
+            }
+            this.time.delayedCall(300, () => {
+              for (const obj of this.barkObjects) {
+                if (obj && obj.destroy) obj.destroy();
+              }
+              this.barkObjects = [];
+              this.textQueue.dismiss();
+            });
+          });
+        }
+      },
     });
   }
 
