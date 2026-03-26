@@ -9,6 +9,25 @@ export default class TitleScene extends Phaser.Scene {
     super({ key: 'TitleScene' });
   }
 
+  preload() {
+    // Load ALL portraits here (first scene) so they're available globally
+    const portraits = [
+      'pax_neutral', 'pepper_neutral', 'mother', 'marshal', 'judge',
+      'grix', 'vera', 'informant', 'miner', 'smuggler', 'commander', 'mechanic'
+    ];
+    portraits.forEach(p => {
+      this.load.image(p, `assets/portraits/${p}.png`);
+    });
+    this.load.on('loaderror', (file) => {
+      console.error('[TitleScene] Portrait load FAILED:', file.key, file.url);
+    });
+    this.load.on('filecomplete', (key) => {
+      if (portraits.includes(key)) {
+        console.log('[TitleScene] Portrait loaded OK:', key);
+      }
+    });
+  }
+
   create() {
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
