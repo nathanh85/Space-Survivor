@@ -84,6 +84,9 @@ export default class FlightScene extends Phaser.Scene {
     this.combatHullWarned = false;
     this.combatShieldsWarned = false;
     this.playerDead = false;
+    this.starDamageCooldown = 0;
+    this.asteroidDamageCooldown = 0;
+    this.systemHadEnemies = false;
 
     // Idle bark timer
     this.lastActivityTime = 0;
@@ -287,6 +290,7 @@ export default class FlightScene extends Phaser.Scene {
     this.perSystemTriggers.clear();
     this.enemyManager.clearAll();
     this.systemCleared = false;
+    this.systemHadEnemies = false;
     this._lootItems = [];
 
     if (!this.systemCache[sysId]) {
@@ -400,30 +404,52 @@ export default class FlightScene extends Phaser.Scene {
       g.fillStyle(0xffffff, s.brightness * 0.7);
       g.fillRect(s.x, s.y, s.size, s.size);
     }
-    // Generate near-star parallax layer
+    // Generate parallax star layers
+    this._farStars = [];
     this._nearStars = [];
     const rng = new RNG(42);
+    for (let i = 0; i < 200; i++) {
+      this._farStars.push({
+        x: rng.float(0, SYS_W), y: rng.float(0, SYS_H),
+        size: rng.float(0.5, 1.5), brightness: rng.float(0.2, 0.5),
+      });
+    }
     for (let i = 0; i < 100; i++) {
       this._nearStars.push({
         x: rng.float(0, SYS_W), y: rng.float(0, SYS_H),
-        size: rng.float(1, 2), brightness: rng.float(0.3, 0.8),
+        size: rng.float(1, 2.5), brightness: rng.float(0.3, 0.8),
       });
     }
   }
 
   updateParallax() {
-    if (!this._nearStars || !this.player.body) return;
-    // Shift near-stars opposite to velocity for parallax feel
-    this.parallaxOffset.x += this.player.body.velocity.x * 0.001;
-    this.parallaxOffset.y += this.player.body.velocity.y * 0.001;
-    // Plus constant slow drift
-    this.parallaxOffset.x += 0.05;
+    if (!this._nearStars || !this._farStars) return;
+    const cam = this.cameras.main;
+    const scrollX = cam.scrollX;
+    const scrollY = cam.scrollY;
+    const timeDrift = this.gameTime * 0.00002; // constant slow drift
+
     const g = this.nearStarLayer; g.clear();
+
+    // Far stars: 5% camera scroll offset + slow drift
+    for (const s of this._farStars) {
+      const nx = s.x - scrollX * 0.05 + timeDrift * 80;
+      const ny = s.y - scrollY * 0.05 + timeDrift * 20;
+      // Wrap stars into viewport range
+      const wx = ((nx % SYS_W) + SYS_W) % SYS_W;
+      const wy = ((ny % SYS_H) + SYS_H) % SYS_H;
+      g.fillStyle(0x8899cc, s.brightness * 0.4);
+      g.fillRect(wx, wy, s.size, s.size);
+    }
+
+    // Near stars: 15% camera scroll offset + slow drift
     for (const s of this._nearStars) {
-      const nx = s.x + this.parallaxOffset.x * 50;
-      const ny = s.y + this.parallaxOffset.y * 50;
+      const nx = s.x - scrollX * 0.15 + timeDrift * 150;
+      const ny = s.y - scrollY * 0.15 + timeDrift * 40;
+      const wx = ((nx % SYS_W) + SYS_W) % SYS_W;
+      const wy = ((ny % SYS_H) + SYS_H) % SYS_H;
       g.fillStyle(0xaaddff, s.brightness * 0.5);
-      g.fillRect(nx, ny, s.size, s.size);
+      g.fillRect(wx, wy, s.size, s.size);
     }
   }
 
@@ -653,6 +679,21 @@ export default class FlightScene extends Phaser.Scene {
         const pushDist = (a.size + 15) - dist + 2;
         this.player.x += Math.cos(angle) * pushDist;
         this.player.y += Math.sin(angle) * pushDist;
+
+        // Impact damage based on speed (with 1s cooldown)
+        const impactSpeed = Math.hypot(this.player.body.velocity.x, this.player.body.velocity.y);
+        if (impactSpeed > 50 && time > this.asteroidDamageCooldown) {
+          this.asteroidDamageCooldown = time + 1000;
+          const dmg = Math.floor(impactSpeed / 20); // 5-15 range
+          this.player.hull -= dmg;
+          if (this.player.hull < 0) this.player.hull = 0;
+          this.cameras.main.shake(100, 0.003);
+          this.sound_mgr.playPlayerHit();
+          if (this.player.hull <= 0) {
+            this.handlePlayerDeath();
+          }
+        }
+
         this.player.body.velocity.x *= -0.3;
         this.player.body.velocity.y *= -0.3;
       }
@@ -807,10 +848,43 @@ export default class FlightScene extends Phaser.Scene {
         this._starWarned = false;
       }
 
-      // Damage zone (1.2x radius)
+      // Damage zone (1.2x radius) — slingshot push + heavy damage
       if (distToStar < star.radius * 1.2) {
-        this.player.hull -= 0.5 * dt * 60; // ~30 dmg/sec
-        if (this.player.hull < 0) this.player.hull = 0;
+        // Slingshot push: fling player outward at 300 force
+        const pushAngle = Phaser.Math.Angle.Between(star.x, star.y, this.player.x, this.player.y);
+        if (this.player.body) {
+          this.player.body.velocity.x = Math.cos(pushAngle) * 300;
+          this.player.body.velocity.y = Math.sin(pushAngle) * 300;
+        }
+
+        // Damage: 10 hull per second on cooldown timer
+        if (time > this.starDamageCooldown) {
+          this.starDamageCooldown = time + 1000; // 1 second cooldown
+          this.player.hull -= 10;
+          if (this.player.hull < 0) this.player.hull = 0;
+
+          // Camera shake + red tint
+          this.cameras.main.shake(150, 0.005);
+          if (this.player.gfx) {
+            this.player.gfx.setTint(0xff0000);
+            this.time.delayedCall(200, () => {
+              if (this.player.gfx) this.player.gfx.clearTint();
+            });
+          }
+
+          // Pepper bark on first star damage (once per session)
+          if (!this.sessionTriggers.has('star_damage_bark')) {
+            this.sessionTriggers.add('star_damage_bark');
+            this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+              text: "Pepper: The star's cookin' us, Pax! GET US OUTTA HERE!"
+            }});
+          }
+
+          // Death check
+          if (this.player.hull <= 0) {
+            this.handlePlayerDeath();
+          }
+        }
       }
     }
 
@@ -1040,16 +1114,22 @@ export default class FlightScene extends Phaser.Scene {
   _showBark(text, speaker) {
     this.sound_mgr.playBarkBlip();
     const W = this.cameras.main.width;
-    this.barkText.setText(text).setPosition(W / 2, 80).setAlpha(0).setVisible(true);
+    // Fixed positions: portrait at left of bark area, text offset right
+    const portraitX = W / 2 - 250;
+    const portraitY = 82;
+    const textX = W / 2 + 10;
+    const textY = 90;
 
-    // Show bark portrait
+    this.barkText.setText(text).setPosition(textX, 80).setAlpha(0).setVisible(true);
+
+    // Show bark portrait at fixed position
     if (this.barkPortrait) { this.barkPortrait.destroy(); this.barkPortrait = null; }
     if (this.barkPortraitGfx) { this.barkPortraitGfx.destroy(); this.barkPortraitGfx = null; }
     const sp = speaker || 'pepper';
     const pKey = sp === 'pepper' ? 'pepper_neutral' : sp === 'pax' ? 'pax_neutral' : sp;
     if (this.textures.exists(pKey)) {
-      this.barkPortrait = this.add.image(W / 2 - this.barkText.width / 2 - 40, 95, pKey)
-        .setDisplaySize(32, 32).setScrollFactor(0).setDepth(521).setAlpha(0);
+      this.barkPortrait = this.add.image(portraitX, portraitY, pKey)
+        .setDisplaySize(48, 48).setScrollFactor(0).setDepth(521).setAlpha(0);
       this.tweens.add({ targets: this.barkPortrait, alpha: 1, duration: 300 });
     } else {
       // Colored rect fallback
@@ -1057,13 +1137,13 @@ export default class FlightScene extends Phaser.Scene {
       const c = colors[sp] || 0x87CEEB;
       this.barkPortraitGfx = this.add.graphics().setScrollFactor(0).setDepth(521).setAlpha(0);
       this.barkPortraitGfx.fillStyle(c, 0.4);
-      this.barkPortraitGfx.fillRect(W / 2 - this.barkText.width / 2 - 40, 79, 32, 32);
+      this.barkPortraitGfx.fillRect(portraitX - 24, portraitY - 24, 48, 48);
       this.barkPortraitGfx.lineStyle(1, c, 0.6);
-      this.barkPortraitGfx.strokeRect(W / 2 - this.barkText.width / 2 - 40, 79, 32, 32);
+      this.barkPortraitGfx.strokeRect(portraitX - 24, portraitY - 24, 48, 48);
       this.tweens.add({ targets: this.barkPortraitGfx, alpha: 1, duration: 300 });
     }
 
-    this.tweens.add({ targets: this.barkText, alpha: 1, y: 90, duration: 300 });
+    this.tweens.add({ targets: this.barkText, alpha: 1, y: textY, duration: 300 });
     if (this.barkTimer) this.barkTimer.remove();
     this.barkTimer = this.time.delayedCall(3500, () => {
       if (this.barkPortrait) this.tweens.add({ targets: this.barkPortrait, alpha: 0, duration: 300 });
@@ -1099,7 +1179,7 @@ export default class FlightScene extends Phaser.Scene {
     if (this.transPortrait) { this.transPortrait.destroy(); this.transPortrait = null; }
     if (isMother && this.textures.exists('mother')) {
       this.transPortrait = this.add.image(W / 2 - 260, 160, 'mother')
-        .setDisplaySize(48, 48).setScrollFactor(0).setDepth(521);
+        .setDisplaySize(64, 64).setScrollFactor(0).setDepth(521);
       this.transContainer.add(this.transPortrait);
     }
 
@@ -1272,8 +1352,13 @@ export default class FlightScene extends Phaser.Scene {
     this.weaponSystem.update();
 
     // Update enemy manager
+    // Track if this system ever had enemies
+    if (this.enemyManager.getEnemyCount() > 0) {
+      this.systemHadEnemies = true;
+    }
+
     const combatCleared = this.enemyManager.update(time, delta, this.player.x, this.player.y, danger);
-    if (combatCleared) {
+    if (combatCleared && this.systemHadEnemies) {
       this.systemCleared = true;
       this.fireBark('all_enemies_cleared');
       this.combatHullWarned = false;
@@ -1756,7 +1841,7 @@ export default class FlightScene extends Phaser.Scene {
     this.versionText.setPosition(W - 10, H - 22);
 
     // Combat HUD
-    this.weaponLabel.setText('LASER  \u221E').setPosition(10, 102);
+    this.weaponLabel.setText('LASER  DMG:' + this.weaponSystem.getDamage() + '  RNG:' + this.weaponSystem.getRange()).setPosition(10, 102);
     const hostiles = this.enemyManager.getEnemyCount();
     if (hostiles > 0) {
       this.hostileLabel.setText('HOSTILES: ' + hostiles).setPosition(W - 10, 140).setOrigin(1, 0).setVisible(true);
@@ -1930,6 +2015,7 @@ export default class FlightScene extends Phaser.Scene {
     this.scene.launch('GalaxyMapScene', {
       universe: this.universe, currentId: this.currentSystemId,
       visited: this.visited, fog: this.fog,
+      startingSystemId: this.startingSystemId,
       onWarp: (id) => { this.scene.resume('FlightScene'); const g = this.currentSystem.gates.find(x => x.targetId === id); if (g) this.startWarp(g); },
     });
   }

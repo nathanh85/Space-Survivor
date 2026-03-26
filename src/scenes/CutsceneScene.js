@@ -91,7 +91,7 @@ export default class CutsceneScene extends Phaser.Scene {
     const pMap = { pepper: 'pepper_neutral', pax: 'pax_neutral', 'M.O.T.H.E.R.': 'mother',
       grix: 'grix', 'commander vera': 'vera', '???': 'informant' };
     const pKey = pMap[(this.beat.speaker || '').toLowerCase()] || pMap[this.beat.speaker] || null;
-    const portraitX = 16, portraitY = boxY + 12, pSize = 96;
+    const portraitX = 16, portraitY = boxY + 12, pSize = 80;
     const textOffset = pKey ? pSize + 24 : 30;
 
     if (pKey && this.textures.exists(pKey)) {

@@ -5,7 +5,7 @@
 import Phaser from 'phaser';
 
 const BOX_HEIGHT = 180;
-const PORTRAIT_SIZE = 100;
+const PORTRAIT_SIZE = 80;
 const CHARS_PER_SEC = 30;
 
 // Per-character portrait colors and speaker label colors

@@ -9,7 +9,8 @@ const LASER = {
   damage: 15,
   fireRate: 250,
   projectileSpeed: 500,
-  projectileLifetime: 1500,
+  projectileLifetime: 700,
+  maxRange: 333,
   projectileColor: 0x00d4ff,
 };
 
@@ -75,5 +76,9 @@ export default class WeaponSystem {
 
   getDamage() {
     return this.weapon.damage;
+  }
+
+  getRange() {
+    return this.weapon.maxRange || 333;
   }
 }

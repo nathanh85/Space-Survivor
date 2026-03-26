@@ -2,8 +2,8 @@
 
 export const TIN_BADGE = {
   name: 'Tin Badge',
-  width: 14,
-  height: 14,
+  width: 24,
+  height: 24,
   color: 0xe74c3c,
   hp: 30,
   damage: 5,

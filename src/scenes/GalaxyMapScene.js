@@ -61,6 +61,7 @@ export default class GalaxyMapScene extends Phaser.Scene {
     this.visited = data.visited;
     this.fog = data.fog;
     this.onWarp = data.onWarp;
+    this.startingSystemId = data.startingSystemId || null;
   }
 
   create() {
@@ -249,11 +250,8 @@ export default class GalaxyMapScene extends Phaser.Scene {
         if (!o || !this.fog.has(`${o.col}_${o.row}`)) continue;
         const op = this.getSystemScreenPos(o);
         g.lineStyle(1, 0x00c8ff, 0.1);
-        const midX = (sp.x + op.x) / 2 + (op.y - sp.y) * 0.08;
-        const midY = (sp.y + op.y) / 2 - (op.x - sp.x) * 0.08;
         g.beginPath();
         g.moveTo(sp.x, sp.y);
-        g.lineTo(midX, midY);
         g.lineTo(op.x, op.y);
         g.strokePath();
       }
@@ -346,6 +344,30 @@ export default class GalaxyMapScene extends Phaser.Scene {
           label.setColor(nameColor);
           label.setAlpha(isVis ? 1.0 : 0.4);
         }
+      }
+    }
+
+    // Hub marker: "THE OUTPOST" at starting system
+    if (this.startingSystemId) {
+      const hubSys = this.universe.find(s => s.id === this.startingSystemId);
+      if (hubSys && this.fog.has(`${hubSys.col}_${hubSys.row}`)) {
+        const hp = this.getSystemScreenPos(hubSys);
+        // Green diamond marker
+        g.fillStyle(0x2ecc71, 0.9);
+        g.beginPath();
+        g.moveTo(hp.x, hp.y + 22);
+        g.lineTo(hp.x + 5, hp.y + 27);
+        g.lineTo(hp.x, hp.y + 32);
+        g.lineTo(hp.x - 5, hp.y + 27);
+        g.closePath();
+        g.fillPath();
+        // Label
+        if (!this._hubLabel) {
+          this._hubLabel = this.add.text(0, 0, 'THE OUTPOST', {
+            fontSize: '8px', fontFamily: FONT, color: '#2ecc71', fontStyle: 'bold',
+          }).setOrigin(0.5).setDepth(7).setAlpha(0.9);
+        }
+        this._hubLabel.setPosition(hp.x, hp.y + 40).setVisible(true);
       }
     }
   }
