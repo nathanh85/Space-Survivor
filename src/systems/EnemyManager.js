@@ -12,7 +12,8 @@ export default class EnemyManager {
     this.enemyProjectiles = scene.physics.add.group();
     this.lastSpawnTime = 0;
     this.killCount = 0;
-    this.wasInCombat = false; // tracks if we had enemies, for "all clear" bark
+    this.totalKills = 0;    // kills THIS system (reset in clearAll)
+    this.totalSpawned = 0;  // spawns THIS system (reset in clearAll)
   }
 
   update(time, delta, playerX, playerY, dangerRating) {
@@ -58,12 +59,18 @@ export default class EnemyManager {
   spawnEnemy(x, y, config) {
     const enemy = new Enemy(this.scene, x, y, config);
     this.enemies.push(enemy);
+    this.totalSpawned++;
     return enemy;
   }
 
   handleEnemyDeath(enemy) {
     this.killCount++;
+    this.totalKills++;
     enemy.alive = false;
+  }
+
+  isZoneCleared() {
+    return this.totalSpawned > 0 && this.totalKills >= this.totalSpawned && this.getEnemyCount() === 0;
   }
 
   cleanup(playerX, playerY, delta) {
@@ -75,6 +82,7 @@ export default class EnemyManager {
       }
 
       // Despawn enemies far from player for >10s
+      // Do NOT count distant-despawned enemies as kills
       const dist = Math.hypot(e.x - playerX, e.y - playerY);
       if (dist > 2000) {
         e.distantTime += delta;
@@ -86,15 +94,6 @@ export default class EnemyManager {
         e.distantTime = 0;
       }
     }
-
-    // Track combat state for "all clear" bark
-    const count = this.getEnemyCount();
-    if (count > 0) this.wasInCombat = true;
-    if (count === 0 && this.wasInCombat) {
-      this.wasInCombat = false;
-      return true; // signal: combat just cleared
-    }
-    return false;
   }
 
   getEnemyCount() {
@@ -114,5 +113,8 @@ export default class EnemyManager {
     this.enemies = [];
     // Clear enemy projectiles
     this.enemyProjectiles.clear(true, true);
+    // Reset zone tracking counters
+    this.totalKills = 0;
+    this.totalSpawned = 0;
   }
 }

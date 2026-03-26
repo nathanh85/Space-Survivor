@@ -131,6 +131,7 @@ export default class FlightScene extends Phaser.Scene {
     this.parallaxOffset = { x: 0, y: 0 };
     this.starLayer = this.add.graphics().setDepth(5);
     this.orbitLayer = this.add.graphics().setDepth(10);
+    this.planetLayer = this.add.graphics().setDepth(15);
     this.staticEntityGfx = this.add.graphics().setDepth(20);
     this.animEntityGfx = this.add.graphics().setDepth(21);
     this.miningGfx = this.add.graphics().setDepth(200);
@@ -207,12 +208,8 @@ export default class FlightScene extends Phaser.Scene {
     // Dialogue UI
     this.dialogueUI = new DialogueUI(this);
 
-    // Bark system
-    this.barkText = this.add.text(0, 0, '', {
-      fontSize: '10px', fontFamily: FONT, color: '#87CEEB',
-      backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 16, y: 10 },
-      wordWrap: { width: 500 }, align: 'center',
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(520).setVisible(false);
+    // Bark system — all objects tracked in array for cleanup
+    this.barkObjects = [];
     this.barkTimer = null;
 
     // Transmission system
@@ -284,6 +281,7 @@ export default class FlightScene extends Phaser.Scene {
     for (const t of this.labelTexts) t.destroy();
     this.labelTexts = [];
     this.staticEntityGfx.clear();
+    this.planetLayer.clear();
     this.animEntityGfx.clear();
     this.miningGfx.clear();
     this.miningAsteroid = null;
@@ -328,6 +326,7 @@ export default class FlightScene extends Phaser.Scene {
     this.gates = sys.gates;
 
     this.drawBgStars(sys.bgStars);
+    this.createNebulas(sysData);
     this.drawStar(sys.star);
     this.drawOrbits(sys);
     this.drawStaticEntities();
@@ -408,47 +407,96 @@ export default class FlightScene extends Phaser.Scene {
     this._farStars = [];
     this._nearStars = [];
     const rng = new RNG(42);
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 350; i++) {
+      const isBright = rng.chance(0.05); // 1 in 20
       this._farStars.push({
         x: rng.float(0, SYS_W), y: rng.float(0, SYS_H),
-        size: rng.float(0.5, 1.5), brightness: rng.float(0.2, 0.5),
+        size: isBright ? rng.float(0.75, 2.25) : rng.float(0.5, 1.5),
+        brightness: isBright ? rng.float(0.3, 0.9) : rng.float(0.15, 0.45),
+        _bright: isBright,
       });
     }
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 180; i++) {
+      const isBright = rng.chance(0.05); // 1 in 20
       this._nearStars.push({
         x: rng.float(0, SYS_W), y: rng.float(0, SYS_H),
-        size: rng.float(1, 2.5), brightness: rng.float(0.3, 0.8),
+        size: isBright ? rng.float(1.5, 3.75) : rng.float(1, 2.5),
+        brightness: isBright ? rng.float(0.5, 1.4) : rng.float(0.25, 0.7),
+        _bright: isBright,
       });
     }
   }
 
-  updateParallax() {
+  createNebulas(sysData) {
+    // Destroy old nebulas
+    if (this._nebulas) {
+      for (const n of this._nebulas) {
+        if (n && n.destroy) n.destroy();
+      }
+    }
+    this._nebulas = [];
+
+    // Region-based color
+    const regionColors = { CORE: 0x2ecc71, FRONT: 0xf39c12, OUTER: 0xe74c3c, RIFT: 0x9b59b6 };
+    const nebulaColor = regionColors[sysData.region.key] || 0x2ecc71;
+
+    // 2 subtle nebula blobs per system, seeded by system ID
+    const rng = new RNG(sysData.seed + 8888);
+    for (let i = 0; i < 2; i++) {
+      const nx = rng.float(400, SYS_W - 400);
+      const ny = rng.float(300, SYS_H - 300);
+      const radius = rng.float(250, 400);
+      const alpha = rng.float(0.02, 0.04);
+
+      const nebula = this.add.circle(nx, ny, radius, nebulaColor, alpha).setDepth(0);
+      this._nebulas.push(nebula);
+
+      // Slow drift tween: 50px over 20s, yoyo, repeat forever
+      const driftX = rng.float(-50, 50);
+      const driftY = rng.float(-50, 50);
+      this.tweens.add({
+        targets: nebula,
+        x: nx + driftX,
+        y: ny + driftY,
+        duration: 20000,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+    }
+  }
+
+  updateParallax(delta) {
     if (!this._nearStars || !this._farStars) return;
     const cam = this.cameras.main;
     const scrollX = cam.scrollX;
     const scrollY = cam.scrollY;
-    const timeDrift = this.gameTime * 0.00002; // constant slow drift
+
+    // Time-based constant drift even when velocity is 0
+    this.starDriftTime = (this.starDriftTime || 0) + (delta || 16) / 1000;
 
     const g = this.nearStarLayer; g.clear();
 
-    // Far stars: 5% camera scroll offset + slow drift
+    // Far stars: 5% camera scroll offset + constant drift
     for (const s of this._farStars) {
-      const nx = s.x - scrollX * 0.05 + timeDrift * 80;
-      const ny = s.y - scrollY * 0.05 + timeDrift * 20;
+      const nx = s.x - scrollX * 0.05 + this.starDriftTime * 3;
+      const ny = s.y - scrollY * 0.05 + this.starDriftTime * 1;
       // Wrap stars into viewport range
       const wx = ((nx % SYS_W) + SYS_W) % SYS_W;
       const wy = ((ny % SYS_H) + SYS_H) % SYS_H;
-      g.fillStyle(0x8899cc, s.brightness * 0.4);
+      const bright = s._bright ? s.brightness * 0.8 : s.brightness * 0.4;
+      g.fillStyle(0x8899cc, bright);
       g.fillRect(wx, wy, s.size, s.size);
     }
 
-    // Near stars: 15% camera scroll offset + slow drift
+    // Near stars: 15% camera scroll offset + constant drift
     for (const s of this._nearStars) {
-      const nx = s.x - scrollX * 0.15 + timeDrift * 150;
-      const ny = s.y - scrollY * 0.15 + timeDrift * 40;
+      const nx = s.x - scrollX * 0.15 + this.starDriftTime * 8;
+      const ny = s.y - scrollY * 0.15 + this.starDriftTime * 2;
       const wx = ((nx % SYS_W) + SYS_W) % SYS_W;
       const wy = ((ny % SYS_H) + SYS_H) % SYS_H;
-      g.fillStyle(0xaaddff, s.brightness * 0.5);
+      const bright = s._bright ? s.brightness * 1.0 : s.brightness * 0.5;
+      g.fillStyle(0xaaddff, bright);
       g.fillRect(wx, wy, s.size, s.size);
     }
   }
@@ -501,31 +549,34 @@ export default class FlightScene extends Phaser.Scene {
 
   drawStaticEntities() {
     const g = this.staticEntityGfx; g.clear();
+    const pg = this.planetLayer; pg.clear();
+
+    // Draw planets on planetLayer (depth 15) — below asteroids (depth 21)
     for (const p of this.planets) {
       const c = Phaser.Display.Color.HexStringToColor(p.type.color).color;
       const r = p.radius;
       const isZion = p.isHub;
 
       // 1. Atmosphere glow
-      g.fillStyle(c, isZion ? 0.25 : 0.15);
-      g.fillCircle(p.x, p.y, r * 1.3);
+      pg.fillStyle(c, isZion ? 0.25 : 0.15);
+      pg.fillCircle(p.x, p.y, r * 1.3);
 
       // 2. Planet body
-      g.fillStyle(c, 1.0);
-      g.fillCircle(p.x, p.y, r);
+      pg.fillStyle(c, 1.0);
+      pg.fillCircle(p.x, p.y, r);
 
       // 3. Shadow crescent (dark side)
-      g.fillStyle(0x000000, 0.25);
-      g.fillCircle(p.x + r * 0.2, p.y + r * 0.1, r * 0.95);
+      pg.fillStyle(0x000000, 0.25);
+      pg.fillCircle(p.x + r * 0.2, p.y + r * 0.1, r * 0.95);
 
       // 4. Highlight (bright spot)
-      g.fillStyle(0xffffff, 0.2);
-      g.fillCircle(p.x - r * 0.3, p.y - r * 0.3, r * 0.4);
+      pg.fillStyle(0xffffff, 0.2);
+      pg.fillCircle(p.x - r * 0.3, p.y - r * 0.3, r * 0.4);
 
       // 5. Extra glow for Zion
       if (isZion) {
-        g.fillStyle(c, 0.08);
-        g.fillCircle(p.x, p.y, r * 1.6);
+        pg.fillStyle(c, 0.08);
+        pg.fillCircle(p.x, p.y, r * 1.6);
       }
 
       const label = isZion ? 'Zion' : p.type.name;
@@ -533,6 +584,8 @@ export default class FlightScene extends Phaser.Scene {
         fontSize: '12px', fontFamily: FONT, color: isZion ? '#2ecc71' : '#aaa',
       }).setOrigin(0.5, 0).setDepth(22));
     }
+
+    // Draw stations on staticEntityGfx (depth 20)
     for (const s of this.stations) {
       this.labelTexts.push(this.add.text(s.x, s.y + s.size + 12, s.name, {
         fontSize: '12px', fontFamily: FONT, color: '#00d4ff',
@@ -898,7 +951,7 @@ export default class FlightScene extends Phaser.Scene {
     }
 
     // Parallax
-    this.updateParallax();
+    this.updateParallax(delta);
 
     // Combat
     this.updateCombat(time, delta);
@@ -1101,9 +1154,11 @@ export default class FlightScene extends Phaser.Scene {
   _dismissQueueItem(item) {
     if (item.type === 'bark') {
       if (this.barkTimer) this.barkTimer.remove();
-      this.barkText.setVisible(false);
-      if (this.barkPortrait) { this.barkPortrait.destroy(); this.barkPortrait = null; }
-      if (this.barkPortraitGfx) { this.barkPortraitGfx.destroy(); this.barkPortraitGfx = null; }
+      // Clean up all bark game objects
+      for (const obj of this.barkObjects) {
+        if (obj && obj.destroy) obj.destroy();
+      }
+      this.barkObjects = [];
     } else if (item.type === 'transmission') {
       if (this.transTimer) this.transTimer.remove();
       if (this.transPortrait) { this.transPortrait.destroy(); this.transPortrait = null; }
@@ -1115,47 +1170,84 @@ export default class FlightScene extends Phaser.Scene {
   _showBark(text, speaker) {
     this.sound_mgr.playBarkBlip();
     const W = this.cameras.main.width;
-    // Fixed positions: portrait at left of bark area, text offset right
-    const portraitX = W / 2 - 250;
-    const portraitY = 82;
-    const textX = W / 2 + 10;
-    const textY = 90;
 
-    this.barkText.setText(text).setPosition(textX, 80).setAlpha(0).setVisible(true);
+    // Clean up previous bark objects
+    for (const obj of this.barkObjects) {
+      if (obj && obj.destroy) obj.destroy();
+    }
+    this.barkObjects = [];
 
-    // Show bark portrait at fixed position
-    if (this.barkPortrait) { this.barkPortrait.destroy(); this.barkPortrait = null; }
-    if (this.barkPortraitGfx) { this.barkPortraitGfx.destroy(); this.barkPortraitGfx = null; }
     const sp = speaker || 'pepper';
+    const boxW = 500, boxH = 80;
+    const boxX = W / 2 - boxW / 2;
+    const boxY = 70 - boxH / 2;
+
+    // Dark background box
+    const boxGfx = this.add.graphics().setScrollFactor(0).setDepth(800).setAlpha(0);
+    boxGfx.fillStyle(0x000000, 0.85);
+    boxGfx.fillRect(boxX, boxY, boxW, boxH);
+    boxGfx.lineStyle(1, 0x1a3a4a, 1);
+    boxGfx.strokeRect(boxX, boxY, boxW, boxH);
+    this.barkObjects.push(boxGfx);
+
+    // Portrait (48x48, left side of box)
+    const portraitX = W / 2 - 220;
+    const portraitY = 70;
     const pKey = sp === 'pepper' ? 'pepper_neutral' : sp === 'pax' ? 'pax_neutral' : sp;
     if (this.textures.exists(pKey)) {
-      this.barkPortrait = this.add.image(portraitX, portraitY, pKey)
-        .setDisplaySize(48, 48).setScrollFactor(0).setDepth(521).setAlpha(0);
-      this.tweens.add({ targets: this.barkPortrait, alpha: 1, duration: 300 });
+      const portrait = this.add.image(portraitX, portraitY, pKey)
+        .setDisplaySize(48, 48).setScrollFactor(0).setDepth(801).setAlpha(0);
+      this.barkObjects.push(portrait);
     } else {
       // Colored rect fallback
       const colors = { pepper: 0x87CEEB, pax: 0xe67e22, 'M.O.T.H.E.R.': 0xe74c3c };
       const c = colors[sp] || 0x87CEEB;
-      this.barkPortraitGfx = this.add.graphics().setScrollFactor(0).setDepth(521).setAlpha(0);
-      this.barkPortraitGfx.fillStyle(c, 0.4);
-      this.barkPortraitGfx.fillRect(portraitX - 24, portraitY - 24, 48, 48);
-      this.barkPortraitGfx.lineStyle(1, c, 0.6);
-      this.barkPortraitGfx.strokeRect(portraitX - 24, portraitY - 24, 48, 48);
-      this.tweens.add({ targets: this.barkPortraitGfx, alpha: 1, duration: 300 });
+      const fallbackGfx = this.add.graphics().setScrollFactor(0).setDepth(801).setAlpha(0);
+      fallbackGfx.fillStyle(c, 0.4);
+      fallbackGfx.fillRect(portraitX - 24, portraitY - 24, 48, 48);
+      fallbackGfx.lineStyle(1, c, 0.6);
+      fallbackGfx.strokeRect(portraitX - 24, portraitY - 24, 48, 48);
+      this.barkObjects.push(fallbackGfx);
     }
 
-    this.tweens.add({ targets: this.barkText, alpha: 1, y: textY, duration: 300 });
+    // Speaker name
+    const speakerColors = { pepper: '#87CEEB', pax: '#e67e22' };
+    const nameColor = speakerColors[sp] || '#87CEEB';
+    const speakerName = sp.charAt(0).toUpperCase() + sp.slice(1);
+    const nameText = this.add.text(W / 2 - 190, 48, speakerName, {
+      fontSize: '11px', fontFamily: FONT, color: nameColor,
+    }).setScrollFactor(0).setDepth(801).setAlpha(0);
+    this.barkObjects.push(nameText);
+
+    // Strip speaker prefix from text if present (e.g. "Pepper: ...")
+    let displayText = text;
+    const prefixMatch = text.match(/^[A-Za-z.]+:\s*/);
+    if (prefixMatch) displayText = text.slice(prefixMatch[0].length);
+
+    // Bark text
+    const barkText = this.add.text(W / 2 - 190, 62, displayText, {
+      fontSize: '11px', fontFamily: FONT, color: '#c8d8e8',
+      wordWrap: { width: 380 },
+    }).setScrollFactor(0).setDepth(801).setAlpha(0);
+    this.barkObjects.push(barkText);
+
+    // Fade in all objects (200ms)
+    for (const obj of this.barkObjects) {
+      this.tweens.add({ targets: obj, alpha: 1, duration: 200 });
+    }
+
+    // Hold 3.5s, then fade out 300ms
     if (this.barkTimer) this.barkTimer.remove();
     this.barkTimer = this.time.delayedCall(3500, () => {
-      if (this.barkPortrait) this.tweens.add({ targets: this.barkPortrait, alpha: 0, duration: 300 });
-      if (this.barkPortraitGfx) this.tweens.add({ targets: this.barkPortraitGfx, alpha: 0, duration: 300 });
-      this.tweens.add({ targets: this.barkText, alpha: 0, y: 80, duration: 300,
-        onComplete: () => {
-          this.barkText.setVisible(false);
-          if (this.barkPortrait) { this.barkPortrait.destroy(); this.barkPortrait = null; }
-          if (this.barkPortraitGfx) { this.barkPortraitGfx.destroy(); this.barkPortraitGfx = null; }
-          this.textQueue.dismiss();
+      for (const obj of this.barkObjects) {
+        this.tweens.add({ targets: obj, alpha: 0, duration: 300 });
+      }
+      this.time.delayedCall(300, () => {
+        for (const obj of this.barkObjects) {
+          if (obj && obj.destroy) obj.destroy();
         }
+        this.barkObjects = [];
+        this.textQueue.dismiss();
       });
     });
   }
@@ -1346,31 +1438,9 @@ export default class FlightScene extends Phaser.Scene {
 
   updateCombat(time, delta) {
     if (this.playerDead) return;
-    const dt = delta / 1000;
-    const danger = this.currentSystem ? this.currentSystem.data.danger : 1;
 
-    // Update weapon (range check)
+    // Weapon always updates (range check) + firing for asteroid mining
     this.weaponSystem.update();
-
-    // Update enemy manager
-    // Track if this system ever had enemies
-    if (this.enemyManager.getEnemyCount() > 0) {
-      this.systemHadEnemies = true;
-    }
-
-    const combatCleared = this.enemyManager.update(time, delta, this.player.x, this.player.y, danger);
-    if (combatCleared && this.systemHadEnemies) {
-      this.systemCleared = true;
-      this.fireBark('all_enemies_cleared');
-      this.combatHullWarned = false;
-      this.combatShieldsWarned = false;
-    }
-
-    // First enemy spotted bark
-    if (this.enemyManager.getEnemyCount() > 0 && !this.firedTriggers.has('first_enemy_spotted')) {
-      this.firedTriggers.add('first_enemy_spotted');
-      this.fireBark('first_enemy_spotted');
-    }
 
     // Fire weapon on left click or right click (shoot-to-mine + shoot enemies)
     const ptr = this.input.activePointer;
@@ -1381,6 +1451,49 @@ export default class FlightScene extends Phaser.Scene {
         this.sound_mgr.playLaser();
         this.lastActivityTime = Date.now();
       }
+    }
+
+    // Check player projectiles vs asteroids (shoot-to-mine) — always active
+    this.weaponSystem.projectiles.getChildren().forEach(proj => {
+      if (!proj || !proj.active) return;
+      for (const a of this.asteroids) {
+        if (a.mined) continue;
+        const dist = Phaser.Math.Distance.Between(proj.x, proj.y, a.x, a.y);
+        if (dist < a.size + 4) {
+          const dmg = proj._damage || 15;
+          proj.destroy();
+          this.handleAsteroidHit(a, dmg);
+          break;
+        }
+      }
+    });
+
+    // Skip enemy combat processing entirely when zone is cleared
+    if (this.systemCleared) return;
+
+    const dt = delta / 1000;
+    const danger = this.currentSystem ? this.currentSystem.data.danger : 1;
+
+    // Update enemy manager
+    // Track if this system ever had enemies
+    if (this.enemyManager.getEnemyCount() > 0) {
+      this.systemHadEnemies = true;
+    }
+
+    this.enemyManager.update(time, delta, this.player.x, this.player.y, danger);
+
+    // Check zone cleared via kill/spawn tracking (not distance despawn)
+    if (!this.systemCleared && this.enemyManager.isZoneCleared()) {
+      this.systemCleared = true;
+      this.fireBark('all_enemies_cleared');
+      this.combatHullWarned = false;
+      this.combatShieldsWarned = false;
+    }
+
+    // First enemy spotted bark
+    if (this.enemyManager.getEnemyCount() > 0 && !this.firedTriggers.has('first_enemy_spotted')) {
+      this.firedTriggers.add('first_enemy_spotted');
+      this.fireBark('first_enemy_spotted');
     }
 
     // Check player projectiles vs enemies
@@ -1408,21 +1521,6 @@ export default class FlightScene extends Phaser.Scene {
       });
     }
 
-    // Check player projectiles vs asteroids (shoot-to-mine)
-    this.weaponSystem.projectiles.getChildren().forEach(proj => {
-      if (!proj || !proj.active) return;
-      for (const a of this.asteroids) {
-        if (a.mined) continue;
-        const dist = Phaser.Math.Distance.Between(proj.x, proj.y, a.x, a.y);
-        if (dist < a.size + 4) {
-          const dmg = proj._damage || 15;
-          proj.destroy();
-          this.handleAsteroidHit(a, dmg);
-          break;
-        }
-      }
-    });
-
     // Check enemy projectiles vs player
     this.enemyManager.enemyProjectiles.getChildren().forEach(proj => {
       if (!proj || !proj.active) return;
@@ -1448,7 +1546,7 @@ export default class FlightScene extends Phaser.Scene {
 
   handleEnemyKill(enemy) {
     this.sound_mgr.playEnemyDeath();
-    this.enemyManager.killCount++;
+    this.enemyManager.handleEnemyDeath(enemy);
 
     // First kill bark
     if (!this.firedTriggers.has('first_enemy_kill')) {
@@ -1849,7 +1947,7 @@ export default class FlightScene extends Phaser.Scene {
     this.versionText.setPosition(W - 10, H - 22);
 
     // Combat HUD
-    this.weaponLabel.setText('LASER  DMG:' + this.weaponSystem.getDamage()).setPosition(10, 102);
+    this.weaponLabel.setText('LASER  DMG:' + this.weaponSystem.getDamage() + '  RNG:' + this.weaponSystem.getRange()).setPosition(10, 102);
     const hostiles = this.enemyManager.getEnemyCount();
     if (hostiles > 0) {
       this.hostileLabel.setText('HOSTILES: ' + hostiles).setPosition(W - 10, 140).setOrigin(1, 0).setVisible(true);
@@ -1858,16 +1956,10 @@ export default class FlightScene extends Phaser.Scene {
     }
     this.killLabel.setText('KILLS: ' + this.enemyManager.killCount).setPosition(W - 10, H - 34).setOrigin(1, 1);
 
-    // XP bar
-    const xpPct = this.player.xpNext > 0 ? this.player.xp / this.player.xpNext : 0;
-    this.xpLabel.setText('LV.' + this.player.level + '  ' + this.player.xp + '/' + this.player.xpNext)
+    // XP info (no level number — that's shown in bar label LV.X)
+    this.xpLabel.setText('XP: ' + this.player.xp + '/' + this.player.xpNext)
       .setPosition(10, 120);
     this.xpBarGfx.clear();
-    const xpBarX = 10, xpBarY = 134, xpBarW = 120, xpBarH = 4;
-    this.xpBarGfx.fillStyle(0x333333, 0.6);
-    this.xpBarGfx.fillRect(xpBarX, xpBarY, xpBarW, xpBarH);
-    this.xpBarGfx.fillStyle(0xbb6bd9);
-    this.xpBarGfx.fillRect(xpBarX, xpBarY, xpBarW * xpPct, xpBarH);
 
     // Credits
     this.creditsLabel.setText('CR: ' + (this.player.credits || 0)).setPosition(W - 10, 160).setOrigin(1, 0);
