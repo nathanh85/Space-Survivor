@@ -651,6 +651,7 @@ export default class FlightScene extends Phaser.Scene {
 
   update(time, delta) {
     if (!this.currentSystem) return;
+    if (this.playerDead) return; // Death screen active — stop all updates
     const dt = delta / 1000;
     this.gameTime = time;
     const W = this.cameras.main.width;
@@ -1708,23 +1709,32 @@ export default class FlightScene extends Phaser.Scene {
     this.time.delayedCall(3500, () => this.tweens.add({ targets: hint, alpha: 1, duration: 400 }));
 
     // Cleanup + respawn
+    let respawnReady = false;
     const cleanup = () => {
+      if (!this.playerDead) return; // prevent double-fire
       typeTimer.remove();
+      if (clickZone) clickZone.destroy();
       elements.forEach(e => e.destroy());
       this.respawnPlayer();
     };
-    const skipHandler = () => {
-      this.input.off('pointerdown', skipHandler);
-      this.input.keyboard.off('keydown-SPACE', skipHandler);
-      cleanup();
-    };
-    this.time.delayedCall(2000, () => {
-      this.input.once('pointerdown', skipHandler);
-      this.input.keyboard.once('keydown-SPACE', skipHandler);
+
+    // Interactive click zone that captures ALL input (blocks FlightScene listeners)
+    const clickZone = this.add.rectangle(W / 2, H / 2, W * 2, H * 2, 0x000000, 0)
+      .setScrollFactor(0).setDepth(999).setInteractive({ useHandCursor: true });
+    elements.push(clickZone);
+
+    clickZone.on('pointerdown', () => {
+      if (respawnReady) cleanup();
     });
-    this.time.delayedCall(8000, () => {
-      this.input.off('pointerdown', skipHandler);
-      this.input.keyboard.off('keydown-SPACE', skipHandler);
+    this.input.keyboard.on('keydown-SPACE', () => {
+      if (respawnReady && this.playerDead) cleanup();
+    });
+
+    // Enable respawn after 2s (let typewriter play)
+    this.time.delayedCall(2000, () => { respawnReady = true; });
+
+    // Auto-respawn after 10s
+    this.time.delayedCall(10000, () => {
       if (this.playerDead) cleanup();
     });
   }
