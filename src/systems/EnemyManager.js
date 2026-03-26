@@ -31,6 +31,9 @@ export default class EnemyManager {
   }
 
   updateSpawning(time, playerX, playerY, danger) {
+    // Stop respawns if zone was cleared
+    if (this.scene.systemCleared) return;
+
     const config = SPAWN_CONFIG[danger] || SPAWN_CONFIG[1];
     if (config.max === 0) return;
 

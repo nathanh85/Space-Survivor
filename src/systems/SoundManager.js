@@ -167,6 +167,12 @@ export default class SoundManager {
     setTimeout(() => this._playTone(1200, 0.08, 'sine', 0.08), 60);
   }
 
+  playLevelUpChime() {
+    this._playTone(440, 0.15, 'sine', 0.12);
+    setTimeout(() => this._playTone(550, 0.15, 'sine', 0.12), 120);
+    setTimeout(() => this._playTone(660, 0.2, 'sine', 0.14), 240);
+  }
+
   playPlayerHit() {
     this._playNoise(0.08, 0.06);
     this._playTone(150, 0.15, 'square', 0.05);

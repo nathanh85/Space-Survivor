@@ -76,6 +76,7 @@ export default class FlightScene extends Phaser.Scene {
     // Combat systems
     this.weaponSystem = new WeaponSystem(this);
     this.enemyManager = new EnemyManager(this);
+    this.systemCleared = false; // stops enemy respawns once all cleared
     this.shieldRegenPaused = 0; // timestamp when regen was paused
     this.lastCombatBarkTime = 0;
     this.combatHullWarned = false;
@@ -93,7 +94,7 @@ export default class FlightScene extends Phaser.Scene {
     // Input
     this.cursors = this.input.keyboard.addKeys({
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
-      w: 'W', a: 'A', s: 'S', d: 'D', space: 'SPACE',
+      space: 'SPACE',
     });
     // Prevent right-click context menu on canvas
     this.game.canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -161,7 +162,7 @@ export default class FlightScene extends Phaser.Scene {
       this.add.text(14, 0, '', { fontSize: '10px', fontFamily: FONT, color: '#e74c3c' }).setScrollFactor(0).setDepth(501),
     ];
 
-    this.controlsText = this.add.text(0, 0, '[W] Thrust  [Mouse] Aim  [A/D] Strafe  [M] Map  [E] Warp  [F] Dock  [TAB] Inv', {
+    this.controlsText = this.add.text(0, 0, '[SPACE] Thrust  [Mouse] Aim  [Arrows] Move  [M] Map  [E] Warp  [F] Dock  [TAB] Inv', {
       fontSize: '8px', fontFamily: FONT, color: '#444444',
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(501);
 
@@ -283,6 +284,7 @@ export default class FlightScene extends Phaser.Scene {
     this.miningAsteroid = null;
     this.perSystemTriggers.clear();
     this.enemyManager.clearAll();
+    this.systemCleared = false;
     this._lootItems = [];
 
     if (!this.systemCache[sysId]) {
@@ -399,7 +401,7 @@ export default class FlightScene extends Phaser.Scene {
     // Generate near-star parallax layer
     this._nearStars = [];
     const rng = new RNG(42);
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 100; i++) {
       this._nearStars.push({
         x: rng.float(0, SYS_W), y: rng.float(0, SYS_H),
         size: rng.float(1, 2), brightness: rng.float(0.3, 0.8),
@@ -410,10 +412,10 @@ export default class FlightScene extends Phaser.Scene {
   updateParallax() {
     if (!this._nearStars || !this.player.body) return;
     // Shift near-stars opposite to velocity for parallax feel
-    this.parallaxOffset.x += this.player.body.velocity.x * 0.0003;
-    this.parallaxOffset.y += this.player.body.velocity.y * 0.0003;
+    this.parallaxOffset.x += this.player.body.velocity.x * 0.001;
+    this.parallaxOffset.y += this.player.body.velocity.y * 0.001;
     // Plus constant slow drift
-    this.parallaxOffset.x += 0.02;
+    this.parallaxOffset.x += 0.05;
     const g = this.nearStarLayer; g.clear();
     for (const s of this._nearStars) {
       const nx = s.x + this.parallaxOffset.x * 50;
@@ -638,6 +640,21 @@ export default class FlightScene extends Phaser.Scene {
 
     // Player
     this.player.update(this.cursors, this.input.activePointer);
+
+    // Ship-asteroid collision
+    for (const a of this.asteroids) {
+      if (a.mined) continue;
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y);
+      if (dist < a.size + 15) {
+        // Push player away
+        const angle = Phaser.Math.Angle.Between(a.x, a.y, this.player.x, this.player.y);
+        const pushDist = (a.size + 15) - dist + 2;
+        this.player.x += Math.cos(angle) * pushDist;
+        this.player.y += Math.sin(angle) * pushDist;
+        this.player.body.velocity.x *= -0.3;
+        this.player.body.velocity.y *= -0.3;
+      }
+    }
 
     // Engine sound
     this.sound_mgr.updateEngineHum(this.player.isThrusting);
@@ -1201,22 +1218,20 @@ export default class FlightScene extends Phaser.Scene {
       this.weaponSystem.weapon.damage += 2;
     }
 
-    // Sound: ascending chime
-    this.sound_mgr.playPickup();
-    this.time.delayedCall(100, () => this.sound_mgr.playPickup());
-    this.time.delayedCall(200, () => this.sound_mgr.playMineComplete());
+    // Sound: ascending chime (440→550→660 Hz)
+    this.sound_mgr.playLevelUpChime();
 
     // Visual: gold ring expanding from ship
-    const ring = this.add.circle(this.player.x, this.player.y, 10, 0xf1c40f, 0).setDepth(250);
-    ring.setStrokeStyle(2, 0xf1c40f, 0.8);
+    const ring = this.add.circle(this.player.x, this.player.y, 10, 0xffd700, 0).setDepth(250);
+    ring.setStrokeStyle(3, 0xffd700, 0.8);
     this.tweens.add({
-      targets: ring, radius: 80, alpha: 0,
+      targets: ring, radius: 120, alpha: 0,
       duration: 1000, onComplete: () => ring.destroy(),
     });
 
     // Visual: "LEVEL X" text center-screen
     const lvlText = this.add.text(W / 2, H * 0.35, 'LEVEL ' + this.player.level, {
-      fontSize: '24px', fontFamily: FONT, color: '#f1c40f', stroke: '#000', strokeThickness: 3,
+      fontSize: '32px', fontFamily: FONT, color: '#ffd700', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(600).setAlpha(0);
     this.tweens.add({ targets: lvlText, alpha: 1, duration: 300 });
     this.time.delayedCall(2000, () => {
@@ -1257,6 +1272,7 @@ export default class FlightScene extends Phaser.Scene {
     // Update enemy manager
     const combatCleared = this.enemyManager.update(time, delta, this.player.x, this.player.y, danger);
     if (combatCleared) {
+      this.systemCleared = true;
       this.fireBark('all_enemies_cleared');
       this.combatHullWarned = false;
       this.combatShieldsWarned = false;

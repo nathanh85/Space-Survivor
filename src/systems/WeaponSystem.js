@@ -48,7 +48,7 @@ export default class WeaponSystem {
     proj._damage = this.weapon.damage;
     proj._spawnX = spawnX;
     proj._spawnY = spawnY;
-    proj._maxRange = 500;
+    proj._maxRange = 333;
 
     // Despawn timer (backup)
     this.scene.time.delayedCall(this.weapon.projectileLifetime, () => {
@@ -64,7 +64,7 @@ export default class WeaponSystem {
       if (!proj || !proj.active) return;
       if (proj._spawnX !== undefined) {
         const dist = Phaser.Math.Distance.Between(proj._spawnX, proj._spawnY, proj.x, proj.y);
-        if (dist > (proj._maxRange || 500)) proj.destroy();
+        if (dist > (proj._maxRange || 333)) proj.destroy();
       }
     });
   }

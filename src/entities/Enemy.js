@@ -173,8 +173,8 @@ export default class Enemy {
       Math.sin(angle) * this.config.projectileSpeed
     );
 
-    // Despawn after 2s
-    this.scene.time.delayedCall(2000, () => {
+    // Despawn after 1.3s (~390px range)
+    this.scene.time.delayedCall(1300, () => {
       if (proj && proj.active) proj.destroy();
     });
   }

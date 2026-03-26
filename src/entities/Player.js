@@ -33,7 +33,7 @@ export default class Player extends Phaser.GameObjects.Container {
     this.drawShip(false);
 
     // Scale ship up 20%
-    this.setScale(1.2);
+    this.setScale(1.5);
 
     // Physics body (scaled to match visual size)
     scene.physics.add.existing(this);
@@ -81,10 +81,10 @@ export default class Player extends Phaser.GameObjects.Container {
     const sin = Math.sin(this.shipAngle);
     let forward = 0, strafe = 0;
 
-    if (cursors.w.isDown || cursors.up.isDown || (cursors.space && cursors.space.isDown)) forward = PLAYER_DEFAULTS.thrust;
-    if (cursors.s.isDown || cursors.down.isDown) forward = -PLAYER_DEFAULTS.reverse;
-    if (cursors.a.isDown || cursors.left.isDown) strafe = -PLAYER_DEFAULTS.strafe;
-    if (cursors.d.isDown || cursors.right.isDown) strafe = PLAYER_DEFAULTS.strafe;
+    if (cursors.up.isDown || (cursors.space && cursors.space.isDown)) forward = PLAYER_DEFAULTS.thrust;
+    if (cursors.down.isDown) forward = -PLAYER_DEFAULTS.reverse;
+    if (cursors.left.isDown) strafe = -PLAYER_DEFAULTS.strafe;
+    if (cursors.right.isDown) strafe = PLAYER_DEFAULTS.strafe;
 
     this.isThrusting = forward > 0;
     const hasInput = forward !== 0 || strafe !== 0;

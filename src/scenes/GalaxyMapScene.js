@@ -94,7 +94,7 @@ export default class GalaxyMapScene extends Phaser.Scene {
     this._sysLabels = {};
     for (const s of this.universe) {
       const label = this.add.text(0, 0, s.name || '', {
-        fontSize: '8px', fontFamily: FONT, color: '#ffffff',
+        fontSize: '11px', fontFamily: FONT, color: '#ffffff',
         align: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: { x: 4, y: 2 },
       }).setOrigin(0.5).setDepth(6).setVisible(false);
       this._sysLabels[s.id] = label;
@@ -290,10 +290,13 @@ export default class GalaxyMapScene extends Phaser.Scene {
         drawHexOutline(g, hp.x, hp.y, HEX_SIZE * 0.95, 0x00d4ff, isAdj ? 0.5 : 0.2);
       }
 
-      // Current system glow
+      // Current system glow (pulsing)
       if (isCur) {
-        g.fillStyle(0x00d4ff, 0.15);
-        g.fillCircle(pos.x, pos.y, 18);
+        const glowPulse = 0.12 + Math.sin(this.time.now * 0.003) * 0.06;
+        g.fillStyle(0x00d4ff, glowPulse);
+        g.fillCircle(pos.x, pos.y, 22);
+        g.fillStyle(0x00d4ff, glowPulse * 0.5);
+        g.fillCircle(pos.x, pos.y, 30);
       }
 
       // System dot — size varies by content (planets + stations)
@@ -304,19 +307,7 @@ export default class GalaxyMapScene extends Phaser.Scene {
       g.fillStyle(regionColor, isVis ? 1 : 0.45);
       g.fillCircle(pos.x, pos.y, dotSize);
 
-      // Danger dots (colored pips below name)
-      const danger = s.danger || 1;
-      const dotCount = Math.min(danger, 10);
-      const dotY = pos.y + 18;
-      const dotSpacing = 4;
-      const dotStartX = pos.x - (dotCount - 1) * dotSpacing / 2;
-      for (let d = 0; d < dotCount; d++) {
-        let dotColor = 0x2ecc71; // green
-        if (danger >= 7) dotColor = 0xe74c3c;      // red
-        else if (danger >= 4) dotColor = 0xf39c12;  // orange
-        g.fillStyle(dotColor, isVis ? 0.8 : 0.3);
-        g.fillCircle(dotStartX + d * dotSpacing, dotY, 1.5);
-      }
+      // (danger dots removed — region color on names instead)
 
       // Station indicator (small square)
       if (hasStation) {
@@ -336,16 +327,24 @@ export default class GalaxyMapScene extends Phaser.Scene {
         g.strokeCircle(pos.x, pos.y, 13);
       }
 
-      // System name label
+      // System name label — colored by region
       if (label) {
         label.setPosition(pos.x, pos.y + 10);
         label.setVisible(true);
-        label.setAlpha(isVis ? 0.7 : 0.3);
+
+        // Color by region
+        const regionKey = s.region ? s.region.key : 'CORE';
+        const regionColors = { CORE: '#2ecc71', FRONT: '#f39c12', OUTER: '#e74c3c', RIFT: '#9b59b6' };
+        const nameColor = regionColors[regionKey] || '#ffffff';
+
         if (isCur) {
           label.setColor('#00d4ff');
-          label.setAlpha(1);
+          // Pulse glow for current system
+          const pulse = 0.8 + Math.sin(this.time.now * 0.004) * 0.2;
+          label.setAlpha(pulse);
         } else {
-          label.setColor('#ffffff');
+          label.setColor(nameColor);
+          label.setAlpha(isVis ? 1.0 : 0.4);
         }
       }
     }
