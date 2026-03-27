@@ -97,7 +97,39 @@ export function generateSystem(sysData, universeData) {
     });
   }
 
-  // Asteroids — density scales by region
+  // Asteroids — density scales by region, typed for visual + drop variety
+  const ASTEROID_TYPES = {
+    iron:   { colors: ['#8B4513', '#A0522D', '#CD853F'], drops: { iron: 0.70, carbon: 0.20, nothing: 0.10 } },
+    carbon: { colors: ['#2F2F2F', '#3D3D3D', '#1A1A1A'], drops: { carbon: 0.70, iron: 0.20, nothing: 0.10 } },
+    ice:    { colors: ['#87CEEB', '#B0E0E6', '#ADD8E6'], drops: { fuel: 0.60, cryo_crystal: 0.20, nothing: 0.20 } },
+    common: { colors: ['#8B7355', '#A0A0A0', '#6B6B6B'], drops: { iron: 0.35, carbon: 0.30, fuel: 0.20, nothing: 0.15 } },
+  };
+  const typeWeights = {
+    CORE:  { common: 50, iron: 35, carbon: 10, ice: 5 },
+    FRONT: { common: 25, iron: 25, carbon: 25, ice: 25 },
+    OUTER: { common: 20, iron: 25, carbon: 25, ice: 30 },
+    RIFT:  { common: 15, iron: 25, carbon: 30, ice: 30 },
+  };
+  const weights = typeWeights[sysData.region.key] || typeWeights.CORE;
+  function pickAsteroidType(rng) {
+    const roll = rng.int(0, 99);
+    let acc = 0;
+    for (const [type, weight] of Object.entries(weights)) {
+      acc += weight;
+      if (roll < acc) return type;
+    }
+    return 'common';
+  }
+  function pickDrop(rng, drops) {
+    const roll = rng.float(0, 1);
+    let acc = 0;
+    for (const [res, chance] of Object.entries(drops)) {
+      acc += chance;
+      if (roll < acc) return res === 'nothing' ? null : res;
+    }
+    return 'iron';
+  }
+
   const maxByRegion = { CORE: 25, FRONT: 35, OUTER: 45, RIFT: 55 };
   const maxAsteroids = maxByRegion[sysData.region.key] || 35;
   const targetAsteroids = rng.int(10, maxAsteroids);
@@ -106,18 +138,19 @@ export function generateSystem(sysData, universeData) {
     const dist = rng.int(300, 1200);
     const ax = system.star.x + Math.cos(angle) * dist + rng.int(-60, 60);
     const ay = system.star.y + Math.sin(angle) * dist + rng.int(-60, 60);
-    // Minimum spacing: skip if too close to existing asteroid
     const tooClose = system.asteroids.some(e => Math.hypot(ax - e.x, ay - e.y) < 40);
     if (tooClose) continue;
     const aSize = rng.int(10, 23);
-    const aResources = getAvailableResources(sysData.danger);
-    const resId = aResources.length > 0 ? rng.pick(aResources) : 'iron';
+    const aType = pickAsteroidType(rng);
+    const typeData = ASTEROID_TYPES[aType];
+    const resId = pickDrop(rng, typeData.drops) || 'iron';
     system.asteroids.push({
       x: ax, y: ay,
       size: aSize,
       hp: aSize * 3,
       maxHp: aSize * 3,
-      color: rng.pick(['#8B7355', '#A0A0A0', '#6B6B6B', '#9B7653']),
+      asteroidType: aType,
+      color: rng.pick(typeData.colors),
       rotation: rng.float(0, Math.PI * 2),
       rotSpeed: rng.float(-0.015, 0.015),
       shapeSeed: rng.int(1, 999999),
@@ -126,16 +159,19 @@ export function generateSystem(sysData, universeData) {
     });
   }
 
-  // Stations
+  // Stations — typed: trading_post, outpost, refinery
+  const STATION_TYPES = ['trading_post', 'outpost', 'refinery'];
   const numStations = rng.int(0, 2);
   for (let i = 0; i < numStations; i++) {
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(400, 900);
+    const sType = rng.pick(STATION_TYPES);
     system.stations.push({
       x: system.star.x + Math.cos(angle) * dist,
       y: system.star.y + Math.sin(angle) * dist,
       name: rng.pick(STATION_PREFIXES) + ' ' + rng.pick(STATION_SUFFIXES),
       size: 16,
+      stationType: sType,
     });
   }
 

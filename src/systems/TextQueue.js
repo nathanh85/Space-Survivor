@@ -1,60 +1,78 @@
 // ============================================================
 // Text Queue Manager — ensures only one text box at a time
-// Priority: dialogue > transmission > bark
-// v0.6.0: chain pacing — 500ms gap between barks, shorter hold in chains
+// v0.6.1: 4-tier priority, max 3 queue, higher cancels lower
 // ============================================================
 
-const PRIORITY = { bark: 0, transmission: 1, dialogue: 2 };
-const MIN_GAP = 5000; // 5 seconds between auto-triggered messages
-const DISMISS_DELAY = 500; // 500ms gap between chained barks
+const PRIORITY = {
+  bark: 0,           // combat/system barks (lowest)
+  flavor: 1,         // Pepper/Pax flavor, idle barks
+  transmission: 2,   // M.O.T.H.E.R. transmissions
+  dialogue: 3,       // NPC/helper barks, quest dialogue (highest)
+};
+const MAX_QUEUE = 3;
+const MIN_GAP = 1500; // 1.5s minimum between bark end and next bark start
+const DISMISS_DELAY = 500;
 
 export default class TextQueue {
   constructor() {
-    this.active = null;       // { type, speaker, data, onShow, onDismiss }
+    this.active = null;
     this.queue = [];
     this.lastFireTime = 0;
-    this.onShowCallback = null;   // set by FlightScene
+    this.onShowCallback = null;
     this.onDismissCallback = null;
     this._dismissTimeout = null;
   }
 
-  /**
-   * Enqueue a text item.
-   * @param {object} item - { type: 'bark'|'transmission'|'dialogue', speaker: string, data: any }
-   */
-  enqueue(item) {
-    const itemPriority = PRIORITY[item.type] ?? 0;
+  _getPriority(item) {
+    return PRIORITY[item.type] ?? PRIORITY[item.priority] ?? 0;
+  }
 
-    // Same-speaker suppression: replace active if same speaker
+  enqueue(item) {
+    const itemPri = this._getPriority(item);
+
+    // Same-speaker suppression: replace active if same speaker+type
     if (this.active && this.active.speaker === item.speaker && this.active.type === item.type) {
       this.dismissActive();
       this.show(item);
       return;
     }
 
-    // Dialogue bumps bark immediately
-    if (itemPriority === PRIORITY.dialogue && this.active && this.active.type === 'bark') {
-      this.dismissActive();
-      this.show(item);
-      return;
+    // Higher priority cancels lower priority active item
+    if (this.active) {
+      const activePri = this._getPriority(this.active);
+      if (itemPri > activePri) {
+        this.dismissActive();
+        this.show(item);
+        return;
+      }
     }
 
     // If nothing active, check cadence then show
     if (!this.active) {
       const now = Date.now();
-      if (item.type !== 'dialogue' && now - this.lastFireTime < MIN_GAP) {
-        this.queue.push(item);
+      if (itemPri < PRIORITY.dialogue && now - this.lastFireTime < MIN_GAP) {
+        this._addToQueue(item);
         return;
       }
       this.show(item);
       return;
     }
 
-    // Something active — queue it (sorted by priority, FIFO within same priority)
+    // Something active — add to queue
+    this._addToQueue(item);
+  }
+
+  _addToQueue(item) {
     // Don't queue duplicate speakers of same type
     const isDupe = this.queue.some(q => q.speaker === item.speaker && q.type === item.type);
-    if (!isDupe) {
-      this.queue.push(item);
+    if (isDupe) return;
+
+    this.queue.push(item);
+
+    // Enforce max queue: drop lowest priority if over limit
+    if (this.queue.length > MAX_QUEUE) {
+      this.queue.sort((a, b) => this._getPriority(b) - this._getPriority(a));
+      this.queue.pop(); // drop lowest priority (last after sort)
     }
   }
 
@@ -64,58 +82,39 @@ export default class TextQueue {
     if (this.onShowCallback) this.onShowCallback(item);
   }
 
-  /**
-   * Check if there are pending items in the queue.
-   */
   hasPending() {
     return this.queue.length > 0;
   }
 
-  /**
-   * Get the hold time for the current bark.
-   * If next item is also a bark (chain), use shorter 3s hold.
-   * Otherwise use standard 6s hold.
-   */
   getBarkHoldTime() {
     if (this.queue.length > 0 && this.queue[0].type === 'bark') {
-      return 3000; // chained bark — shorter hold
+      return 3000;
     }
-    return 6000; // standalone bark — full hold
+    return 6000;
   }
 
-  /**
-   * Call when the active text box is done (timed out, clicked through, etc.)
-   */
   dismiss() {
     const was = this.active;
     this.active = null;
     if (was && this.onDismissCallback) this.onDismissCallback(was);
 
-    // Clear any pending dismiss timeout
     if (this._dismissTimeout) {
       clearTimeout(this._dismissTimeout);
       this._dismissTimeout = null;
     }
 
-    // Fire next after dismiss delay
     if (this.queue.length > 0) {
-      // Sort by priority (highest first)
-      this.queue.sort((a, b) => (PRIORITY[b.type] ?? 0) - (PRIORITY[a.type] ?? 0));
+      this.queue.sort((a, b) => this._getPriority(b) - this._getPriority(a));
       const next = this.queue.shift();
-
-      // Apply 500ms gap when next item is a bark (chain pacing)
       const delay = (was && was.type === 'bark' && next.type === 'bark') ? DISMISS_DELAY : 300;
       this._dismissTimeout = setTimeout(() => {
         this._dismissTimeout = null;
         if (!this.active) this.show(next);
-        else this.queue.unshift(next); // put it back if something jumped in
+        else this.queue.unshift(next);
       }, delay);
     }
   }
 
-  /**
-   * Force-dismiss the active item (for dialogue opening, etc.)
-   */
   dismissActive() {
     if (this._dismissTimeout) {
       clearTimeout(this._dismissTimeout);
@@ -127,9 +126,6 @@ export default class TextQueue {
     this.active = null;
   }
 
-  /**
-   * Is something currently showing?
-   */
   isActive() {
     return this.active !== null;
   }

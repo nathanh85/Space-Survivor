@@ -48,7 +48,14 @@ export default class FlightScene extends Phaser.Scene {
     this.sound_mgr = new SoundManager();
 
     // Universe
-    this.universe = generateUniverse(42);
+    // Galaxy seed: use saved seed on Continue, generate new on New Game
+    if (this._initData && this._initData.fromSave) {
+      const save = SaveManager.load();
+      this.galaxySeed = (save && save.universe && save.universe.galaxySeed) || 42;
+    } else {
+      this.galaxySeed = Math.floor(Math.random() * 999999) + 1;
+    }
+    this.universe = generateUniverse(this.galaxySeed);
     this.systemCache = {};
     this.currentSystemId = null;
     this.currentSystem = null;
@@ -331,7 +338,22 @@ export default class FlightScene extends Phaser.Scene {
       this.systemCache[sysId] = generateSystem(sysData, this.universe);
       const rng = new RNG(sysData.seed + 5555);
       for (const st of this.systemCache[sysId].stations) {
-        st.npc = NPCS[rng.int(0, NPCS.length - 1)];
+        // Assign NPC based on station type
+        const sType = st.stationType || 'outpost';
+        if (sType === 'trading_post') {
+          st.npc = NPCS.find(n => n.id === 'merchant_grix') || NPCS[0];
+        } else if (sType === 'refinery') {
+          st.npc = { id: 'refinery_worker', name: 'Refinery Worker', type: 'flavor',
+            portrait: 'mechanic', dialogue: { greeting: "Conversion bay's offline. Come back when we get the parts in." } };
+        } else {
+          st.npc = { id: 'outpost_local', name: 'Local', type: 'flavor',
+            portrait: rng.pick(['miner', 'smuggler']),
+            dialogue: { greeting: rng.pick([
+              "Just passin' through? Smart. Don't stay too long.",
+              "Nothin' to see here. Just rust and regret.",
+              "You kids should be careful. M.O.T.H.E.R.'s eyes are everywhere.",
+            ]) } };
+        }
       }
 
       // Add Planet Zion to the starting system
@@ -461,6 +483,7 @@ export default class FlightScene extends Phaser.Scene {
       },
       inventory: this.inventory.slots.map(s => s ? { ...s } : null),
       universe: {
+        galaxySeed: this.galaxySeed,
         currentSystem: this.currentSystemId,
         visitedSystems: [...this.visited],
         clearedSystems: this._clearedSystems || [],
@@ -1683,6 +1706,20 @@ export default class FlightScene extends Phaser.Scene {
       this.fireBark('all_enemies_cleared');
       this.combatHullWarned = false;
       this.combatShieldsWarned = false;
+      // Respawn timer: enemies return after 90s
+      this.time.delayedCall(90000, () => {
+        if (this.systemCleared && this.currentSystemId) {
+          this.systemCleared = false;
+          this.enemyManager.totalKills = 0;
+          this.enemyManager.totalSpawned = 0;
+          // Fire respawn bark once per session per system
+          const rKey = 'respawn_' + this.currentSystemId;
+          if (!this.sessionTriggers.has(rKey)) {
+            this.sessionTriggers.add(rKey);
+            this.fireBark('enemies_respawned');
+          }
+        }
+      });
     }
 
     // First enemy spotted bark
@@ -2270,7 +2307,13 @@ export default class FlightScene extends Phaser.Scene {
 
         const sellZone = this.add.zone(px + 350, y + 7, 60, 18).setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
         const capturedResId = resId;
-        sellZone.on('pointerdown', () => this._sellResource(capturedResId));
+        sellZone.on('pointerdown', (pointer) => {
+          const qty = this.inventory.countItem(capturedResId);
+          let amt = 1;
+          if (pointer.event.ctrlKey || pointer.event.metaKey) amt = qty; // sell all
+          else if (pointer.event.shiftKey) amt = 5; // sell 5
+          this._sellResource(capturedResId, amt);
+        });
         this.tradeObjects.push(sellZone);
 
         y += 22;
@@ -2317,18 +2360,32 @@ export default class FlightScene extends Phaser.Scene {
 
     const closeZone = this.add.zone(W / 2, py + ph - 16, 80, 20).setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
     closeZone.on('pointerdown', () => this.closeTradeUI());
+
+    // Sell hint
+    const hint = this.add.text(W / 2, py + ph + 8, 'Click=1  |  Shift+Click=5  |  Ctrl+Click=All', {
+      fontSize: '7px', fontFamily: FONT, color: '#555',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(701);
+    this.tradeObjects.push(hint);
     this.tradeObjects.push(closeZone);
   }
 
-  _sellResource(resourceId) {
+  _sellResource(resourceId, amount) {
     const res = RESOURCES[resourceId];
     if (!res) return;
     const qty = this.inventory.countItem(resourceId);
     if (qty <= 0) return;
-    const value = res.value * qty;
-    this.inventory.removeItem(resourceId, qty);
+    const sellQty = Math.min(amount || 1, qty);
+    const value = res.value * sellQty;
+    this.inventory.removeItem(resourceId, sellQty);
     this.player.credits += value;
     this.sound_mgr.playPickup();
+
+    // Floating text
+    const W = this.cameras.main.width;
+    const ft = this.add.text(W / 2, this.cameras.main.height * 0.4, '+' + value + ' CR', {
+      fontSize: '10px', fontFamily: FONT, color: '#f39c12', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(800);
+    this.tweens.add({ targets: ft, y: ft.y - 20, alpha: 0, duration: 800, onComplete: () => ft.destroy() });
 
     // First sell bark
     if (!this._firstSellBark) {

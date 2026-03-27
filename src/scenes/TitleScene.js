@@ -138,7 +138,17 @@ export default class TitleScene extends Phaser.Scene {
     hitZone.on('pointerdown', onClick);
   }
 
+  _resumeAudio() {
+    // Safari requires AudioContext created/resumed during user gesture
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === 'suspended') ctx.resume();
+      ctx.close(); // just warming up the permission
+    } catch (e) { /* ignore */ }
+  }
+
   continueGame() {
+    this._resumeAudio();
     this.cameras.main.fadeOut(500, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start('FlightScene', { fromSave: true });
@@ -146,6 +156,7 @@ export default class TitleScene extends Phaser.Scene {
   }
 
   startNewGame() {
+    this._resumeAudio();
     this.cameras.main.fadeOut(500, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start('IntroScene');

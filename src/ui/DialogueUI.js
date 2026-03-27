@@ -4,8 +4,8 @@
 
 import Phaser from 'phaser';
 
-const BOX_HEIGHT = 180;
-const PORTRAIT_SIZE = 80;
+const BOX_HEIGHT = 160;
+const PORTRAIT_SIZE = 72;
 const CHARS_PER_SEC = 30;
 
 // Per-character portrait colors and speaker label colors
@@ -179,18 +179,20 @@ export default class DialogueUI {
     for (const t of this._initTexts) t.destroy();
     this._initTexts = [];
 
-    // Background
+    // Background — narrower, centered, moved up to avoid save indicator
+    const boxW = Math.min(W * 0.8, 1200);
+    const boxX = (W - boxW) / 2;
     this.bgGfx.clear();
     this.bgGfx.fillStyle(0x000000, 0.85);
-    this.bgGfx.fillRect(0, boxY, W, BOX_HEIGHT);
+    this.bgGfx.fillRect(boxX, boxY, boxW, BOX_HEIGHT);
     this.bgGfx.lineStyle(1, 0x00d4ff, 0.3);
-    this.bgGfx.strokeRect(0, boxY, W, BOX_HEIGHT);
+    this.bgGfx.strokeRect(boxX, boxY, boxW, BOX_HEIGHT);
 
     const beat = this.currentBeat;
     const info = getPortraitInfo(beat.speaker);
 
     // Portrait
-    const px = 16, py = boxY + 12;
+    const px = boxX + 16, py = boxY + 10;
     this.portraitGfx.clear();
     this.portraitImage.setVisible(false);
 
@@ -223,7 +225,7 @@ export default class DialogueUI {
 
     // Dialogue text
     this.dialogueText.setPosition(textX, boxY + 32);
-    this.dialogueText.setWordWrapWidth(W - textX - 20);
+    this.dialogueText.setWordWrapWidth(boxX + boxW - textX - 20);
     this.dialogueText.setText('');
 
     // Advance hint

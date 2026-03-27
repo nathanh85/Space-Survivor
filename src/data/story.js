@@ -254,6 +254,16 @@ export const STORY_BEATS = [
     lines: ["We're burnin' daylight! ...Well, starlight. Same thing out here."]
   },
 
+  // === RESPAWN AWARENESS BARK ===
+  {
+    id: 'bark_enemies_respawned',
+    type: 'bark',
+    trigger: 'enemies_respawned',
+    speaker: 'pepper',
+    portrait: null,
+    lines: ["Looks like they're back. Guess they didn't get the message."]
+  },
+
   // === TRANSMISSION REACTION BARKS ===
   {
     id: 'bark_react_mother',
