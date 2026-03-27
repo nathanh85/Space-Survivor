@@ -113,8 +113,8 @@ export function generateSystem(sysData, universeData) {
   const ASTEROID_TYPES = {
     iron:   { colors: ['#8B4513', '#A0522D', '#CD853F'], drops: { iron: 0.70, carbon: 0.20, nothing: 0.10 } },
     carbon: { colors: ['#2F2F2F', '#3D3D3D', '#1A1A1A'], drops: { carbon: 0.70, iron: 0.20, nothing: 0.10 } },
-    ice:    { colors: ['#87CEEB', '#B0E0E6', '#ADD8E6'], drops: { fuel: 0.60, cryo_crystal: 0.20, nothing: 0.20 } },
-    common: { colors: ['#8B7355', '#A0A0A0', '#6B6B6B'], drops: { iron: 0.35, carbon: 0.30, fuel: 0.20, nothing: 0.15 } },
+    ice:    { colors: ['#87CEEB', '#B0E0E6', '#ADD8E6'], drops: { fuel: 0.60, cryo: 0.20, nothing: 0.20 } },
+    common: { colors: ['#8B7355', '#A0A0A0', '#6B6B6B'], drops: { iron: 0.30, carbon: 0.30, fuel: 0.20, nothing: 0.20 } },
   };
   const typeWeights = {
     CORE:  { common: 50, iron: 35, carbon: 10, ice: 5 },

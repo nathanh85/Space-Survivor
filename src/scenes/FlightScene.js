@@ -466,27 +466,9 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   assignResources(asteroids, sysData, planets) {
-    // H1: Drop table driven by asteroid TYPE, not region
-    const ASTEROID_DROP_TABLES = {
-      iron:   [{ id: 'iron', w: 80 }, { id: 'carbon', w: 20 }],
-      carbon: [{ id: 'carbon', w: 80 }, { id: 'iron', w: 20 }],
-      ice:    [{ id: 'fuel', w: 70 }, { id: 'iron', w: 30 }],
-      common: [{ id: 'iron', w: 33 }, { id: 'carbon', w: 34 }, { id: 'fuel', w: 33 }],
-    };
-    function rollDropTable(rng, table) {
-      const total = table.reduce((s, e) => s + e.w, 0);
-      let roll = rng.int(0, total - 1);
-      for (const entry of table) {
-        roll -= entry.w;
-        if (roll < 0) return entry.id;
-      }
-      return table[0].id;
-    }
-    const rng = new RNG(sysData.seed + 7777);
+    // resourceId already set by UniverseGenerator from type-based drop tables.
+    // Just initialize gameplay state and mineTime here.
     for (const a of asteroids) {
-      const aType = a.asteroidType || 'common';
-      const table = ASTEROID_DROP_TABLES[aType] || ASTEROID_DROP_TABLES.common;
-      a.resourceId = rollDropTable(rng, table);
       a.mined = false;
       a.mineProgress = 0;
       const res = RESOURCES[a.resourceId];
@@ -1028,7 +1010,7 @@ export default class FlightScene extends Phaser.Scene {
     // Planet Zion proximity
     this.nearPlanetZion = false;
     for (const p of this.planets) {
-      if (p.isHub && Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 100) {
+      if (p.isHub && Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 150) {
         this.nearPlanetZion = true;
         break;
       }
@@ -2773,8 +2755,8 @@ export default class FlightScene extends Phaser.Scene {
       if (mx >= s.x && mx <= s.x + s.w && my >= s.y && my <= s.y + s.h) {
         const slot = this.inventory.slots[s.index];
         if (slot) {
-          // H6: If a fuel slot is double-clicked (was already selected), use it
-          if (slot.resourceId === 'fuel' && this._selectedInvSlot === s.index) {
+          // Fuel items: single click uses them directly
+          if (slot.resourceId === 'fuel') {
             this._useFuelFromInventory(s.index);
             clicked = true;
             break;

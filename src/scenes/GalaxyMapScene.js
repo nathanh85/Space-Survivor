@@ -504,7 +504,10 @@ export default class GalaxyMapScene extends Phaser.Scene {
         'Region: ' + sys.region.name,
         'Danger: ' + sys.danger + '/10',
         sys.hasStation ? 'Station: Yes' : '',
-        this.clearedSystems.includes(sys.id) ? 'Status: CLEARED' : 'Status: Hostile',
+        this.clearedSystems.includes(sys.id) ? 'Status: CLEARED' :
+          sys.danger <= 2 ? 'Status: Safe' :
+          sys.danger <= 4 ? 'Status: Contested' :
+          sys.danger <= 7 ? 'Status: Hostile' : 'Status: Deadly',
       ].filter(l => l);
       const th = 14 + lines.length * 16;
 
