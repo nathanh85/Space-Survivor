@@ -140,6 +140,10 @@ export default class FlightScene extends Phaser.Scene {
       this.sound_mgr.ensureContext();
       if (this.invOpen) this.handleInvClick(pointer);
     }, this);
+    // B16: Right-click in inventory to use item (fuel)
+    this.input.on('pointerup', (pointer) => {
+      if (this.invOpen && pointer.rightButtonReleased()) this.handleInvRightClick(pointer);
+    }, this);
 
     // World + Camera
     this.physics.world.setBounds(0, 0, SYS_W, SYS_H);
@@ -414,6 +418,12 @@ export default class FlightScene extends Phaser.Scene {
     }
 
     const sys = this.currentSystem;
+    // B15: Reset asteroid HP to full on every system entry (cached systems retain damage)
+    for (const a of sys.asteroids) {
+      a.hp = a.maxHp;
+      a.mined = false;
+      a.mineProgress = 0;
+    }
     this.assignResources(sys.asteroids, sysData, sys.planets);
     this.planets = sys.planets;
     this.asteroids = sys.asteroids;
@@ -2177,7 +2187,7 @@ export default class FlightScene extends Phaser.Scene {
                 }
               }
               if (rewards.fuel) this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + rewards.fuel);
-              this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: Quest complete! Thanks, Vera.' } });
+              this._showRewardPopup(rewards);
               this.autoSave();
             }
             this._launchHubScene();
@@ -2264,12 +2274,7 @@ export default class FlightScene extends Phaser.Scene {
             }
           }
           if (rewards.fuel) this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + rewards.fuel);
-          // Reward popup
-          let rewardStr = 'Rewards:';
-          if (rewards.credits) rewardStr += ' +' + rewards.credits + ' CR';
-          if (rewards.xp) rewardStr += ' +' + rewards.xp + ' XP';
-          if (rewards.fuel) rewardStr += ' +' + rewards.fuel + ' Fuel';
-          this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: Quest complete! ' + rewardStr } });
+          this._showRewardPopup(rewards);
           this.autoSave();
         }
       });
@@ -2755,12 +2760,6 @@ export default class FlightScene extends Phaser.Scene {
       if (mx >= s.x && mx <= s.x + s.w && my >= s.y && my <= s.y + s.h) {
         const slot = this.inventory.slots[s.index];
         if (slot) {
-          // Fuel items: single click uses them directly
-          if (slot.resourceId === 'fuel') {
-            this._useFuelFromInventory(s.index);
-            clicked = true;
-            break;
-          }
           this._selectedInvSlot = s.index;
         } else {
           this._selectedInvSlot = null;
@@ -2770,6 +2769,21 @@ export default class FlightScene extends Phaser.Scene {
       }
     }
     if (!clicked) this._selectedInvSlot = null;
+  }
+
+  // B16: Right-click an inventory item to use it (fuel only for now)
+  handleInvRightClick(pointer) {
+    if (!this.invOpen || !this._invSlots) return;
+    const mx = pointer.x, my = pointer.y;
+    for (const s of this._invSlots) {
+      if (mx >= s.x && mx <= s.x + s.w && my >= s.y && my <= s.y + s.h) {
+        const slot = this.inventory.slots[s.index];
+        if (slot && slot.resourceId === 'fuel') {
+          this._useFuelFromInventory(s.index);
+        }
+        break;
+      }
+    }
   }
 
   // H6: Use one unit of fuel from inventory, adds +20 fuel
@@ -2798,6 +2812,32 @@ export default class FlightScene extends Phaser.Scene {
     this._selectedInvSlot = null;
   }
 
+  // B17: Quest reward popup — floating text showing what was earned
+  _showRewardPopup(rewards) {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const parts = [];
+    if (rewards.credits) parts.push('+' + rewards.credits + ' CR');
+    if (rewards.xp) parts.push('+' + rewards.xp + ' XP');
+    if (rewards.fuel) parts.push('+' + rewards.fuel + ' Fuel');
+    if (parts.length === 0) return;
+
+    const popup = this.add.text(W / 2, H / 2 - 80, 'QUEST COMPLETE!\n' + parts.join('  '), {
+      fontSize: '14px', fontFamily: FONT, color: '#f1c40f',
+      stroke: '#000', strokeThickness: 3,
+      align: 'center',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(900);
+
+    this.tweens.add({
+      targets: popup,
+      y: popup.y - 50,
+      alpha: 0,
+      duration: 2500,
+      delay: 800,
+      onComplete: () => popup.destroy(),
+    });
+  }
+
   // ========== WARP / MAP ==========
 
   openGalaxyMap() {
@@ -2814,7 +2854,27 @@ export default class FlightScene extends Phaser.Scene {
     });
   }
 
-  tryWarp() { if (this.nearGate && !this.invOpen && !this.dialogueActive) this.startWarp(this.nearGate); }
+  tryWarp() {
+    if (!this.nearGate || this.invOpen || this.dialogueActive) return;
+    // F11: Lock warp until Supply Run is complete
+    const supplyRunDone = this.questManager.completedQuests.includes('quest_supply_run');
+    const supplyRunActive = this.questManager.activeQuests.some(q => q.id === 'quest_supply_run');
+    if (!supplyRunDone && !supplyRunActive) {
+      // Not yet accepted — prompt to dock with Vera first
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: "Pepper: We should check in with Commander Vera before headin' out.",
+      }});
+      return;
+    }
+    if (!supplyRunDone && supplyRunActive) {
+      // Accepted but not turned in
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: "Pepper: Vera needs those supplies before we head out, Pax.",
+      }});
+      return;
+    }
+    this.startWarp(this.nearGate);
+  }
 
   startWarp(gateData) {
     if (gateData.isDungeon) {
