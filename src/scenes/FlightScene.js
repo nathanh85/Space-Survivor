@@ -2856,24 +2856,19 @@ export default class FlightScene extends Phaser.Scene {
 
   tryWarp() {
     if (!this.nearGate || this.invOpen || this.dialogueActive) return;
-    // F11: Lock warp until Supply Run is complete
-    const supplyRunDone = this.questManager.completedQuests.includes('quest_supply_run');
-    const supplyRunActive = this.questManager.activeQuests.some(q => q.id === 'quest_supply_run');
-    if (!supplyRunDone && !supplyRunActive) {
-      // Not yet accepted — prompt to dock with Vera first
-      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
-        text: "Pepper: We should check in with Commander Vera before headin' out.",
-      }});
-      return;
-    }
-    if (!supplyRunDone && supplyRunActive) {
-      // Accepted but not turned in
+    // F11: Lock warp until Supply Run is turned in
+    const done = this.questManager.completedQuests.includes('quest_supply_run');
+    if (done) { this.startWarp(this.nearGate); return; }
+    const active = this.questManager.activeQuests.some(q => q.id === 'quest_supply_run');
+    if (active) {
       this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
         text: "Pepper: Vera needs those supplies before we head out, Pax.",
       }});
-      return;
+    } else {
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: "Pepper: We should check in with Commander Vera before headin' out.",
+      }});
     }
-    this.startWarp(this.nearGate);
   }
 
   startWarp(gateData) {
