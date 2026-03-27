@@ -60,6 +60,18 @@ export function generateUniverse(seed = 42) {
     }
   }
 
+  // Mark the first CORE system (closest to grid center) as the starting system
+  const coreSystems = systems.filter(s => s.region.key === 'CORE');
+  if (coreSystems.length > 0) {
+    const cx = UNIVERSE_COLS / 2, cy = UNIVERSE_ROWS / 2;
+    coreSystems.sort((a, b) =>
+      Math.hypot(a.col - cx, a.row - cy) - Math.hypot(b.col - cx, b.row - cy)
+    );
+    coreSystems[0].isStarting = true;
+  } else if (systems.length > 0) {
+    systems[0].isStarting = true;
+  }
+
   return systems;
 }
 
@@ -161,6 +173,34 @@ export function generateSystem(sysData, universeData) {
 
   // Stations — typed: trading_post, outpost, refinery
   const STATION_TYPES = ['trading_post', 'outpost', 'refinery'];
+
+  // Hub/starting system: always add a trading post
+  if (sysData.isStarting) {
+    const angle = rng.float(0, Math.PI * 2);
+    const dist = rng.int(500, 800);
+    system.stations.push({
+      x: system.star.x + Math.cos(angle) * dist,
+      y: system.star.y + Math.sin(angle) * dist,
+      name: 'Grix Trading Co.',
+      size: 16,
+      stationType: 'trading_post',
+    });
+  }
+
+  // Core Worlds: 30% chance of an extra trading post
+  const addTradingPost = !sysData.isStarting && sysData.region.key === 'CORE' && rng.chance(0.3);
+  if (addTradingPost) {
+    const angle = rng.float(0, Math.PI * 2);
+    const dist = rng.int(450, 850);
+    system.stations.push({
+      x: system.star.x + Math.cos(angle) * dist,
+      y: system.star.y + Math.sin(angle) * dist,
+      name: rng.pick(STATION_PREFIXES) + ' ' + rng.pick(STATION_SUFFIXES),
+      size: 16,
+      stationType: 'trading_post',
+    });
+  }
+
   const numStations = rng.int(0, 2);
   for (let i = 0; i < numStations; i++) {
     const angle = rng.float(0, Math.PI * 2);

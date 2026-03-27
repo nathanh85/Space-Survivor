@@ -3,7 +3,7 @@
 // ============================================================
 
 import Enemy from '../entities/Enemy.js';
-import { TIN_BADGE, SPAWN_CONFIG } from '../data/enemies.js';
+import { TIN_BADGE, SCOUT, SPAWN_CONFIG } from '../data/enemies.js';
 
 export default class EnemyManager {
   constructor(scene) {
@@ -35,8 +35,11 @@ export default class EnemyManager {
     // Stop respawns if zone was cleared
     if (this.scene.systemCleared) return;
 
-    const config = SPAWN_CONFIG[danger] || SPAWN_CONFIG[1];
-    if (config.max === 0) return;
+    // H2: Danger 1-2 → no spawns at all
+    if (danger <= 2) return;
+
+    const config = SPAWN_CONFIG[danger] || SPAWN_CONFIG[3];
+    if (!config || config.max === 0) return;
 
     if (time - this.lastSpawnTime < config.interval) return;
     this.lastSpawnTime = time;
@@ -53,7 +56,20 @@ export default class EnemyManager {
     // Bounds check
     if (sx < 100 || sx > 4700 || sy < 100 || sy > 3500) return;
 
-    this.spawnEnemy(sx, sy, TIN_BADGE);
+    // H2: Enemy type selection by danger level
+    let enemyType = TIN_BADGE;
+    if (danger >= 5 && danger <= 6) {
+      // 25% chance of Scout, 75% Tin Badge
+      enemyType = (Math.random() < 0.25 && SCOUT) ? SCOUT : TIN_BADGE;
+    } else if (danger >= 7 && danger <= 8) {
+      // 50/50 mixed
+      enemyType = (Math.random() < 0.5 && SCOUT) ? SCOUT : TIN_BADGE;
+    } else if (danger >= 9) {
+      // 60% Scout, 40% Tin Badge
+      enemyType = (Math.random() < 0.6 && SCOUT) ? SCOUT : TIN_BADGE;
+    }
+
+    this.spawnEnemy(sx, sy, enemyType);
   }
 
   spawnEnemy(x, y, config) {

@@ -43,7 +43,63 @@ export const NPCS = [
       about_factory: "43LL Sector. The Factory. That's where M.O.T.H.E.R. keeps the ones who fought back. Your folks included.",
       farewell: "Watch the dark between the stars, kids. M.O.T.H.E.R.'s always listenin'.",
     },
-  }
+  },
+
+  // H5: Refinery flavor NPC
+  {
+    id: 'refinery_worker',
+    name: 'Refinery Worker',
+    type: 'flavor',
+    portrait: 'mechanic',
+    personality: 'Tired, no-nonsense, covered in ore dust',
+    dialogue: {
+      greeting: "These ore processors haven't been calibrated in months. Don't touch anything.",
+      line2: "Conversion bay's running hot today. Watch your hull near the exhaust vents.",
+      line3: "We melt down what the miners bring in. Not glamorous, but it pays.",
+    },
+  },
+
+  // H5: Outpost drifter flavor NPC
+  {
+    id: 'outpost_drifter',
+    name: 'Drifter',
+    type: 'flavor',
+    portrait: 'smuggler',
+    personality: 'Weathered, wary, seen too much',
+    dialogue: {
+      greeting: "Just passin' through? Smart. Don't stay too long.",
+      line2: "Seen three ships blow past here last week. None of 'em came back.",
+      line3: "Got a tip: avoid the Rift. Whatever M.O.T.H.E.R. is buildin' out there... it ain't for us.",
+    },
+  },
+
+  // H5: Outpost settler flavor NPC
+  {
+    id: 'outpost_settler',
+    name: 'Settler',
+    type: 'flavor',
+    portrait: 'miner',
+    personality: 'Stubborn optimist clinging to life on the frontier',
+    dialogue: {
+      greeting: "We came out here for a fresh start. Some days I think we just found fresh trouble.",
+      line2: "Nothin' to see here. Just rust and regret.",
+      line3: "You kids be careful. M.O.T.H.E.R.'s eyes are everywhere now.",
+    },
+  },
+
+  // H5: Outpost mechanic flavor NPC
+  {
+    id: 'outpost_mechanic',
+    name: 'Mechanic',
+    type: 'flavor',
+    portrait: 'mechanic',
+    personality: 'Practical, gruff, fiercely self-reliant',
+    dialogue: {
+      greeting: "Your ship looks like it's held together with prayers and carbon tape. Respect.",
+      line2: "Need parts? I'm fresh out. Need advice? Same answer.",
+      line3: "Out here, you learn to fix what you got. No supply runs for months at a stretch.",
+    },
+  },
 ];
 
 export function getNPC(id) {

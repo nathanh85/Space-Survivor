@@ -16,16 +16,34 @@ export const TIN_BADGE = {
   xp: 10,
 };
 
+// Scout — faster, weaker, higher fire rate (danger 5+)
+export const SCOUT = {
+  name: 'Scout',
+  width: 18,
+  height: 18,
+  color: 0xf39c12,
+  hp: 20,
+  damage: 4,
+  speed: 130,
+  detectRange: 450,
+  attackRange: 220,
+  fireRate: 1000,
+  projectileSpeed: 380,
+  loot: { credits: [3, 10], resources: ['fuel', 'iron'], resourceChance: 0.3 },
+  xp: 14,
+};
+
 // Danger rating → spawn config
+// H2: Danger 1-2 → no spawns (handled by early return in EnemyManager)
 export const SPAWN_CONFIG = {
   1:  { max: 0,  interval: 0 },
-  2:  { max: 3,  interval: 15000 },
-  3:  { max: 4,  interval: 12000 },
-  4:  { max: 5,  interval: 10000 },
-  5:  { max: 7,  interval: 8000 },
-  6:  { max: 8,  interval: 7000 },
-  7:  { max: 9,  interval: 6000 },
-  8:  { max: 10, interval: 5000 },
-  9:  { max: 13, interval: 4000 },
-  10: { max: 15, interval: 3000 },
+  2:  { max: 0,  interval: 0 },
+  3:  { max: 2,  interval: 14000 },
+  4:  { max: 2,  interval: 12000 },
+  5:  { max: 3,  interval: 9000 },
+  6:  { max: 4,  interval: 8000 },
+  7:  { max: 5,  interval: 7000 },
+  8:  { max: 6,  interval: 5500 },
+  9:  { max: 7,  interval: 4500 },
+  10: { max: 8,  interval: 3500 },
 };

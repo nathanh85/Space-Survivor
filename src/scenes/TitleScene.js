@@ -34,6 +34,18 @@ export default class TitleScene extends Phaser.Scene {
     const H = this.cameras.main.height;
     this.cameras.main.setBackgroundColor('#050510');
 
+    // H10: Apply LINEAR filtering to all portrait textures for quality upscaling
+    const portraitKeys = [
+      'pax_neutral', 'pepper_neutral', 'mother', 'marshal', 'judge',
+      'grix', 'vera', 'informant', 'miner', 'smuggler', 'commander', 'mechanic',
+    ];
+    portraitKeys.forEach(key => {
+      const tex = this.textures.get(key);
+      if (tex && tex.key !== '__MISSING') {
+        tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+      }
+    });
+
     const hasSave = SaveManager.hasSave();
 
     // Background stars
@@ -95,7 +107,7 @@ export default class TitleScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Version
-    this.add.text(W / 2, H - 20, 'v0.6.1 \u2014 P.E.S.T.S.', {
+    this.add.text(W / 2, H - 20, 'v0.6.2 \u2014 P.E.S.T.S.', {
       fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#333333',
     }).setOrigin(0.5);
 
@@ -164,36 +176,93 @@ export default class TitleScene extends Phaser.Scene {
   }
 
   confirmNewGame() {
-    // Show warning overlay
+    // H7: Styled confirmation box — dark panel with amber border, Press Start 2P font
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
+    const BOX_W = 400, BOX_H = 150;
+    const bx = W / 2 - BOX_W / 2, by = H / 2 - BOX_H / 2;
 
+    const elements = [];
+
+    // Semi-transparent dark overlay behind the box
     const overlay = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.7).setDepth(100);
-    const warnText = this.add.text(W / 2, H * 0.4, 'Erase save and start over?', {
-      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#e74c3c',
-    }).setOrigin(0.5).setDepth(101);
+    elements.push(overlay);
 
-    const yesY = H * 0.52;
-    const yesText = this.add.text(W / 2 - 80, yesY, 'YES', {
-      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#e74c3c',
-    }).setOrigin(0.5).setDepth(101);
-    const yesZone = this.add.zone(W / 2 - 80, yesY, 80, 30).setDepth(102).setInteractive({ useHandCursor: true });
+    // Box background
+    const boxGfx = this.add.graphics().setDepth(101);
+    boxGfx.fillStyle(0x0a0a18, 0.96);
+    boxGfx.fillRect(bx, by, BOX_W, BOX_H);
+    // Amber border 2px
+    boxGfx.lineStyle(2, 0xe67e22, 1);
+    boxGfx.strokeRect(bx, by, BOX_W, BOX_H);
+    // Subtle inner glow line
+    boxGfx.lineStyle(1, 0xf39c12, 0.35);
+    boxGfx.strokeRect(bx + 3, by + 3, BOX_W - 6, BOX_H - 6);
+    elements.push(boxGfx);
+
+    // "ERASE SAVE?" title
+    const warnText = this.add.text(W / 2, by + 28, 'ERASE SAVE?', {
+      fontSize: '14px', fontFamily: '"Press Start 2P", monospace', color: '#e67e22', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(102);
+    elements.push(warnText);
+
+    const subText = this.add.text(W / 2, by + 56, 'All progress will be lost.', {
+      fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#888888',
+    }).setOrigin(0.5).setDepth(102);
+    elements.push(subText);
+
+    // YES button (red)
+    const yesX = W / 2 - 70, yesY = by + 102;
+    const yesBg = this.add.graphics().setDepth(102);
+    yesBg.fillStyle(0xe74c3c, 0.25);
+    yesBg.fillRect(yesX - 45, yesY - 16, 90, 32);
+    yesBg.lineStyle(1, 0xe74c3c, 0.8);
+    yesBg.strokeRect(yesX - 45, yesY - 16, 90, 32);
+    elements.push(yesBg);
+
+    const yesText = this.add.text(yesX, yesY, 'YES', {
+      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#e74c3c', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(103);
+    elements.push(yesText);
+
+    const yesZone = this.add.zone(yesX, yesY, 90, 32).setDepth(104).setInteractive({ useHandCursor: true });
+    yesZone.on('pointerover', () => { yesBg.clear(); yesBg.fillStyle(0xe74c3c, 0.5); yesBg.fillRect(yesX - 45, yesY - 16, 90, 32); yesBg.lineStyle(1, 0xe74c3c, 1); yesBg.strokeRect(yesX - 45, yesY - 16, 90, 32); });
+    yesZone.on('pointerout', () => { yesBg.clear(); yesBg.fillStyle(0xe74c3c, 0.25); yesBg.fillRect(yesX - 45, yesY - 16, 90, 32); yesBg.lineStyle(1, 0xe74c3c, 0.8); yesBg.strokeRect(yesX - 45, yesY - 16, 90, 32); });
     yesZone.on('pointerdown', () => {
       SaveManager.deleteSave();
       this.startNewGame();
     });
+    elements.push(yesZone);
 
-    const noText = this.add.text(W / 2 + 80, yesY, 'NO', {
-      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#2ecc71',
-    }).setOrigin(0.5).setDepth(101);
-    const noZone = this.add.zone(W / 2 + 80, yesY, 80, 30).setDepth(102).setInteractive({ useHandCursor: true });
+    // NO button (green)
+    const noX = W / 2 + 70, noY = by + 102;
+    const noBg = this.add.graphics().setDepth(102);
+    noBg.fillStyle(0x2ecc71, 0.2);
+    noBg.fillRect(noX - 45, noY - 16, 90, 32);
+    noBg.lineStyle(1, 0x2ecc71, 0.8);
+    noBg.strokeRect(noX - 45, noY - 16, 90, 32);
+    elements.push(noBg);
+
+    const noText = this.add.text(noX, noY, 'NO', {
+      fontSize: '12px', fontFamily: '"Press Start 2P", monospace', color: '#2ecc71', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(103);
+    elements.push(noText);
+
+    const noZone = this.add.zone(noX, noY, 90, 32).setDepth(104).setInteractive({ useHandCursor: true });
+    noZone.on('pointerover', () => { noBg.clear(); noBg.fillStyle(0x2ecc71, 0.4); noBg.fillRect(noX - 45, noY - 16, 90, 32); noBg.lineStyle(1, 0x2ecc71, 1); noBg.strokeRect(noX - 45, noY - 16, 90, 32); });
+    noZone.on('pointerout', () => { noBg.clear(); noBg.fillStyle(0x2ecc71, 0.2); noBg.fillRect(noX - 45, noY - 16, 90, 32); noBg.lineStyle(1, 0x2ecc71, 0.8); noBg.strokeRect(noX - 45, noY - 16, 90, 32); });
     noZone.on('pointerdown', () => {
-      overlay.destroy();
-      warnText.destroy();
-      yesText.destroy();
-      yesZone.destroy();
-      noText.destroy();
-      noZone.destroy();
+      elements.forEach(e => { if (e && e.destroy) e.destroy(); });
     });
+    elements.push(noZone);
+
+    // ESC also closes
+    const escHandler = (e) => {
+      if (e.code === 'Escape') {
+        elements.forEach(el => { if (el && el.destroy) el.destroy(); });
+        this.input.keyboard.off('keydown', escHandler);
+      }
+    };
+    this.input.keyboard.on('keydown', escHandler);
   }
 }

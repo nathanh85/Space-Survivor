@@ -271,8 +271,8 @@ export default class FlightScene extends Phaser.Scene {
     this.gates = [];
     this.gameTime = 0;
 
-    // Enter starting system
-    const start = this.universe.find(s => s.region.key === 'CORE') || this.universe[0];
+    // Enter starting system — prefer isStarting flag, fallback to first CORE system
+    const start = this.universe.find(s => s.isStarting) || this.universe.find(s => s.region.key === 'CORE') || this.universe[0];
     this.startingSystemId = start.id;
 
     // Check if resuming from save
@@ -335,24 +335,51 @@ export default class FlightScene extends Phaser.Scene {
     this._lootItems = [];
 
     if (!this.systemCache[sysId]) {
+      // H3/H4: mark isStarting on sysData before generating so UniverseGenerator can add trading post
+      if (sysId === this.startingSystemId) sysData.isStarting = true;
       this.systemCache[sysId] = generateSystem(sysData, this.universe);
       const rng = new RNG(sysData.seed + 5555);
       for (const st of this.systemCache[sysId].stations) {
-        // Assign NPC based on station type
+        // H4/H5: Assign NPC based on station type
         const sType = st.stationType || 'outpost';
         if (sType === 'trading_post') {
           st.npc = NPCS.find(n => n.id === 'merchant_grix') || NPCS[0];
         } else if (sType === 'refinery') {
+          // H5: Refinery Worker with flavor lines
+          const refineryLines = [
+            "These ore processors haven't been calibrated in months. Don't touch anything.",
+            "Conversion bay's running hot today. Watch your hull near the exhaust vents.",
+            "We melt down what the miners bring in. Not glamorous, but it pays.",
+          ];
           st.npc = { id: 'refinery_worker', name: 'Refinery Worker', type: 'flavor',
-            portrait: 'mechanic', dialogue: { greeting: "Conversion bay's offline. Come back when we get the parts in." } };
+            portrait: 'mechanic',
+            dialogue: { greeting: rng.pick(refineryLines) } };
         } else {
-          st.npc = { id: 'outpost_local', name: 'Local', type: 'flavor',
-            portrait: rng.pick(['miner', 'smuggler']),
-            dialogue: { greeting: rng.pick([
-              "Just passin' through? Smart. Don't stay too long.",
-              "Nothin' to see here. Just rust and regret.",
-              "You kids should be careful. M.O.T.H.E.R.'s eyes are everywhere.",
-            ]) } };
+          // H5: Outpost NPC variety
+          const outpostNPCs = [
+            { id: 'outpost_drifter', name: 'Drifter', portrait: 'smuggler',
+              lines: [
+                "Just passin' through? Smart. Don't stay too long.",
+                "Seen three ships blow past here last week. None of 'em came back.",
+                "Got a tip: avoid the Rift. Whatever M.O.T.H.E.R. is buildin' out there... it ain't for us.",
+              ] },
+            { id: 'outpost_settler', name: 'Settler', portrait: 'miner',
+              lines: [
+                "We came out here for a fresh start. Some days I think we just found fresh trouble.",
+                "Nothin' to see here. Just rust and regret.",
+                "You kids be careful. M.O.T.H.E.R.'s eyes are everywhere now.",
+              ] },
+            { id: 'outpost_mechanic', name: 'Mechanic', portrait: 'mechanic',
+              lines: [
+                "Your ship looks like it's held together with prayers and carbon tape. Respect.",
+                "Need parts? I'm fresh out. Need advice? Same answer.",
+                "Out here, you learn to fix what you got. No supply runs for months at a stretch.",
+              ] },
+          ];
+          const chosen = rng.pick(outpostNPCs);
+          st.npc = { id: chosen.id, name: chosen.name, type: 'flavor',
+            portrait: chosen.portrait,
+            dialogue: { greeting: rng.pick(chosen.lines) } };
         }
       }
 
@@ -439,16 +466,27 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   assignResources(asteroids, sysData, planets) {
+    // H1: Drop table driven by asteroid TYPE, not region
+    const ASTEROID_DROP_TABLES = {
+      iron:   [{ id: 'iron', w: 80 }, { id: 'carbon', w: 20 }],
+      carbon: [{ id: 'carbon', w: 80 }, { id: 'iron', w: 20 }],
+      ice:    [{ id: 'fuel', w: 70 }, { id: 'iron', w: 30 }],
+      common: [{ id: 'iron', w: 33 }, { id: 'carbon', w: 34 }, { id: 'fuel', w: 33 }],
+    };
+    function rollDropTable(rng, table) {
+      const total = table.reduce((s, e) => s + e.w, 0);
+      let roll = rng.int(0, total - 1);
+      for (const entry of table) {
+        roll -= entry.w;
+        if (roll < 0) return entry.id;
+      }
+      return table[0].id;
+    }
     const rng = new RNG(sysData.seed + 7777);
     for (const a of asteroids) {
-      let nearest = planets[0], nd = Infinity;
-      for (const p of planets) {
-        if (p.isHub) continue;
-        const d = Math.hypot(a.x - p.x, a.y - p.y);
-        if (d < nd) { nd = d; nearest = p; }
-      }
-      const avail = getAvailableResources(nearest.type, sysData.region.key);
-      a.resourceId = avail.length > 0 ? rng.pick(avail).id : null;
+      const aType = a.asteroidType || 'common';
+      const table = ASTEROID_DROP_TABLES[aType] || ASTEROID_DROP_TABLES.common;
+      a.resourceId = rollDropTable(rng, table);
       a.mined = false;
       a.mineProgress = 0;
       const res = RESOURCES[a.resourceId];
@@ -1172,21 +1210,29 @@ export default class FlightScene extends Phaser.Scene {
 
   updatePrompt(W, H) {
     if (this.nearPlanetZion) {
-      this.promptText.setText('[F] Land at The Outpost')
+      this.promptText.setText('[F] Dock at The Outpost (Hub)')
         .setColor('#2ecc71').setPosition(W / 2, H - 60).setVisible(true);
     } else if (this.nearGate) {
       const gt = this.nearGate;
       this.promptText.setText('[E] WARP \u2192 ' + gt.targetName + (gt.isDungeon ? ' \u26A0 DUNGEON' : ''))
         .setColor(gt.isDungeon ? '#ff00ff' : '#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
     } else if (this.nearStation) {
-      const npc = this.nearStation.npc;
+      const st = this.nearStation;
       let dockLabel;
       if (this.outOfFuel) {
         dockLabel = '[F] Emergency Dock \u2014 Free Fuel';
-      } else if (npc && npc.type === 'merchant') {
-        dockLabel = '[F] Trade at ' + this.nearStation.name;
       } else {
-        dockLabel = '[F] Dock at ' + this.nearStation.name;
+        // H3/H4/Dock Prompt: format by station type
+        const sType = st.stationType || 'outpost';
+        if (sType === 'trading_post') {
+          dockLabel = '[F] Dock at Trading Post ' + st.name;
+        } else if (sType === 'refinery') {
+          dockLabel = '[F] Dock at Refinery ' + st.name;
+        } else if (sType === 'hub') {
+          dockLabel = '[F] Dock at The Outpost (Hub)';
+        } else {
+          dockLabel = '[F] Dock at Outpost ' + st.name;
+        }
       }
       this.promptText.setText(dockLabel)
         .setColor(this.outOfFuel ? '#f1c40f' : '#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
@@ -1368,7 +1414,11 @@ export default class FlightScene extends Phaser.Scene {
     this.barkObjects = [];
 
     const sp = speaker || 'pepper';
-    const boxW = 500, boxH = 80;
+    // H8/H9: Wider bark box (560px min), increased padding
+    const PORTRAIT_SZ = 48;
+    const PAD = 10;
+    const boxW = Math.max(560, W * 0.55);
+    const boxH = 80;
     const boxX = W / 2 - boxW / 2;
     const boxY = 70 - boxH / 2;
 
@@ -1380,31 +1430,41 @@ export default class FlightScene extends Phaser.Scene {
     boxGfx.strokeRect(boxX, boxY, boxW, boxH);
     this.barkObjects.push(boxGfx);
 
-    // Portrait (48x48, left side of box)
-    const portraitX = W / 2 - 220;
-    const portraitY = 70;
-    const pKey = sp === 'pepper' ? 'pepper_neutral' : sp === 'pax' ? 'pax_neutral' : sp;
+    // Portrait: 48x48, 10px from left edge of bark box
+    const portraitX = boxX + PAD + PORTRAIT_SZ / 2;
+    const portraitY = boxY + boxH / 2;
+    // Resolve portrait key — support M.O.T.H.E.R. and named speakers
+    const portraitKeyMap = {
+      pepper: 'pepper_neutral', pax: 'pax_neutral',
+      'M.O.T.H.E.R.': 'mother', mother: 'mother',
+      grix: 'grix', vera: 'vera', 'commander vera': 'vera',
+    };
+    const pKey = portraitKeyMap[sp] || portraitKeyMap[sp.toLowerCase()] || sp;
     if (this.textures.exists(pKey)) {
       const portrait = this.add.image(portraitX, portraitY, pKey)
-        .setDisplaySize(48, 48).setScrollFactor(0).setDepth(801).setAlpha(0);
+        .setDisplaySize(PORTRAIT_SZ, PORTRAIT_SZ).setScrollFactor(0).setDepth(801).setAlpha(0);
       this.barkObjects.push(portrait);
     } else {
       // Colored rect fallback
-      const colors = { pepper: 0x87CEEB, pax: 0xe67e22, 'M.O.T.H.E.R.': 0xe74c3c };
-      const c = colors[sp] || 0x87CEEB;
+      const colors = { pepper: 0x87CEEB, pax: 0xe67e22, 'M.O.T.H.E.R.': 0xe74c3c, mother: 0xe74c3c };
+      const c = colors[sp] || colors[sp.toLowerCase()] || 0x87CEEB;
       const fallbackGfx = this.add.graphics().setScrollFactor(0).setDepth(801).setAlpha(0);
       fallbackGfx.fillStyle(c, 0.4);
-      fallbackGfx.fillRect(portraitX - 24, portraitY - 24, 48, 48);
+      fallbackGfx.fillRect(portraitX - PORTRAIT_SZ / 2, portraitY - PORTRAIT_SZ / 2, PORTRAIT_SZ, PORTRAIT_SZ);
       fallbackGfx.lineStyle(1, c, 0.6);
-      fallbackGfx.strokeRect(portraitX - 24, portraitY - 24, 48, 48);
+      fallbackGfx.strokeRect(portraitX - PORTRAIT_SZ / 2, portraitY - PORTRAIT_SZ / 2, PORTRAIT_SZ, PORTRAIT_SZ);
       this.barkObjects.push(fallbackGfx);
     }
 
+    // H8: Text starts at portrait.right + 12px
+    const textStartX = boxX + PAD + PORTRAIT_SZ + 12;
+    const wrapWidth = boxW - PORTRAIT_SZ - PAD * 3 - 12;
+
     // Speaker name
-    const speakerColors = { pepper: '#87CEEB', pax: '#e67e22' };
-    const nameColor = speakerColors[sp] || '#87CEEB';
+    const speakerColors = { pepper: '#87CEEB', pax: '#e67e22', 'M.O.T.H.E.R.': '#f39c12', mother: '#f39c12' };
+    const nameColor = speakerColors[sp] || speakerColors[sp.toLowerCase()] || '#87CEEB';
     const speakerName = sp.charAt(0).toUpperCase() + sp.slice(1);
-    const nameText = this.add.text(W / 2 - 190, 48, speakerName, {
+    const nameText = this.add.text(textStartX, boxY + PAD, speakerName, {
       fontSize: '11px', fontFamily: FONT, color: nameColor,
     }).setScrollFactor(0).setDepth(801).setAlpha(0);
     this.barkObjects.push(nameText);
@@ -1415,9 +1475,9 @@ export default class FlightScene extends Phaser.Scene {
     if (prefixMatch) displayText = text.slice(prefixMatch[0].length);
 
     // Bark text (starts empty — typewriter fills it)
-    const barkText = this.add.text(W / 2 - 190, 62, '', {
+    const barkText = this.add.text(textStartX, boxY + PAD + 18, '', {
       fontSize: '11px', fontFamily: FONT, color: '#c8d8e8',
-      wordWrap: { width: 380 },
+      wordWrap: { width: wrapWidth },
     }).setScrollFactor(0).setDepth(801).setAlpha(0);
     this.barkObjects.push(barkText);
 
@@ -2113,14 +2173,78 @@ export default class FlightScene extends Phaser.Scene {
     if (this.invOpen || this.dialogueActive || this.tradeOpen) return;
     if (this.nearPlanetZion) {
       this.autoSave();
-      this.sound_mgr.stopAll();
-      this.scene.pause('FlightScene');
-      this.scene.launch('HubScene');
+      // H3: Show Vera's quest dialogue on hub dock before launching HubScene
+      const vera = NPCS.find(n => n.id === 'quest_vera');
+      if (vera) {
+        const completeQuest = this.questManager.getActiveQuestForNPC('quest_vera');
+        if (completeQuest && this.questManager.isQuestComplete(completeQuest.id)) {
+          this.dialogueActive = true;
+          const beat = { speaker: vera.name, portrait: vera.portrait, lines: completeQuest.dialogue.complete, choices: null };
+          this.dialogueUI.show(beat, () => {
+            this.dialogueActive = false;
+            const rewards = this.questManager.turnInQuest(completeQuest.id, this.inventory);
+            if (rewards) {
+              if (rewards.credits) this.player.credits += rewards.credits;
+              if (rewards.xp) {
+                this.player.xp += rewards.xp;
+                if (this.player.xp >= this.player.xpNext) {
+                  this.player.level++;
+                  this.player.xp -= this.player.xpNext;
+                  this.player.xpNext = Math.floor(this.player.xpNext * 1.5);
+                  this.onLevelUp();
+                }
+              }
+              if (rewards.fuel) this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + rewards.fuel);
+              this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: Quest complete! Thanks, Vera.' } });
+              this.autoSave();
+            }
+            this._launchHubScene();
+          });
+          return;
+        }
+        const availQuest = this.questManager.getAvailableQuestForNPC('quest_vera', this.player.level);
+        if (availQuest) {
+          this.dialogueActive = true;
+          const beat = { speaker: vera.name, portrait: vera.portrait, lines: availQuest.dialogue.offer, choices: null };
+          this.dialogueUI.show(beat, () => {
+            this.dialogueActive = false;
+            this.questManager.acceptQuest(availQuest.id);
+            this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: New quest from Vera! Check the HUD." } });
+            this._launchHubScene();
+          });
+          return;
+        }
+        if (completeQuest && !this.questManager.isQuestComplete(completeQuest.id)) {
+          this.dialogueActive = true;
+          const beat = { speaker: vera.name, portrait: vera.portrait, lines: completeQuest.dialogue.inProgress, choices: null };
+          this.dialogueUI.show(beat, () => {
+            this.dialogueActive = false;
+            this._launchHubScene();
+          });
+          return;
+        }
+        // Default Vera greeting
+        this.dialogueActive = true;
+        const lines = [vera.dialogue.greeting, vera.dialogue.farewell];
+        const beat = { speaker: vera.name, portrait: vera.portrait, lines, choices: null };
+        this.dialogueUI.show(beat, () => {
+          this.dialogueActive = false;
+          this._launchHubScene();
+        });
+        return;
+      }
+      this._launchHubScene();
       return;
     }
     if (this.nearStation) {
       this.tryDock();
     }
+  }
+
+  _launchHubScene() {
+    this.sound_mgr.stopAll();
+    this.scene.pause('FlightScene');
+    this.scene.launch('HubScene');
   }
 
   tryDock() {
@@ -2648,12 +2772,48 @@ export default class FlightScene extends Phaser.Scene {
     for (const s of this._invSlots) {
       if (mx >= s.x && mx <= s.x + s.w && my >= s.y && my <= s.y + s.h) {
         const slot = this.inventory.slots[s.index];
-        this._selectedInvSlot = slot ? s.index : null;
+        if (slot) {
+          // H6: If a fuel slot is double-clicked (was already selected), use it
+          if (slot.resourceId === 'fuel' && this._selectedInvSlot === s.index) {
+            this._useFuelFromInventory(s.index);
+            clicked = true;
+            break;
+          }
+          this._selectedInvSlot = s.index;
+        } else {
+          this._selectedInvSlot = null;
+        }
         clicked = true;
         break;
       }
     }
     if (!clicked) this._selectedInvSlot = null;
+  }
+
+  // H6: Use one unit of fuel from inventory, adds +20 fuel
+  _useFuelFromInventory(slotIndex) {
+    const slot = this.inventory.slots[slotIndex];
+    if (!slot || slot.resourceId !== 'fuel') return;
+    const maxFuel = this.player.maxFuel || 100;
+    if (this.player.fuel >= maxFuel) {
+      // Tank already full — flash feedback
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: 'Pepper: Tank is already full, Pax!',
+      }});
+      return;
+    }
+    this.inventory.removeItem('fuel', 1);
+    const gained = Math.min(20, maxFuel - this.player.fuel);
+    this.player.fuel = Math.min(maxFuel, this.player.fuel + 20);
+    this.sound_mgr.playPickup();
+    // Floating text
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const ft = this.add.text(W / 2, H / 2 - 30, '+' + gained + ' Fuel', {
+      fontSize: '12px', fontFamily: FONT, color: '#f1c40f', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(800);
+    this.tweens.add({ targets: ft, y: ft.y - 30, alpha: 0, duration: 900, onComplete: () => ft.destroy() });
+    this._selectedInvSlot = null;
   }
 
   // ========== WARP / MAP ==========
@@ -2679,8 +2839,15 @@ export default class FlightScene extends Phaser.Scene {
       this.fireBark('near_dungeon_gate');
       return;
     }
-    if (this.player.fuel < 10 || this.outOfFuel) return;
-    this.player.fuel = Math.max(0, this.player.fuel - 10);
+    // H6: Warp costs WARP_FUEL_COST fuel; block if not enough
+    const WARP_FUEL_COST = 15;
+    if (this.player.fuel < WARP_FUEL_COST) {
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: "Pepper: We're running on fumes, Pax. Need fuel!",
+      }});
+      return;
+    }
+    this.player.fuel = Math.max(0, this.player.fuel - WARP_FUEL_COST);
     this.sound_mgr.playWarpWhoosh();
     this.sound_mgr.stopAll();
 
