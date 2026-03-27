@@ -95,7 +95,7 @@ export default class TitleScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Version
-    this.add.text(W / 2, H - 20, 'v0.6.0 \u2014 P.E.S.T.S.', {
+    this.add.text(W / 2, H - 20, 'v0.6.1 \u2014 P.E.S.T.S.', {
       fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#333333',
     }).setOrigin(0.5);
 
