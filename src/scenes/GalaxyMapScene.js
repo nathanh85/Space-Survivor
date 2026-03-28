@@ -240,10 +240,21 @@ export default class GalaxyMapScene extends Phaser.Scene {
     if (!clicked) return;
 
     const cur = this.universe.find(s => s.id === this.currentId);
-    if (cur && cur.connections.includes(clicked.id)) {
-      this.scene.stop('GalaxyMapScene');
-      if (this.onWarp) this.onWarp(clicked.id);
+    if (!cur || !cur.connections.includes(clicked.id)) return;
+
+    // v0.6.4.2: Same warp lock as the physical gate
+    if (this.questManager) {
+      const done = this.questManager.completedQuests.includes('quest_supply_run');
+      if (!done) {
+        this.scene.stop('GalaxyMapScene');
+        const active = this.questManager.activeQuests.some(q => q.id === 'quest_supply_run');
+        if (this.onWarp) this.onWarp(null, active ? 'active' : 'inactive');
+        return;
+      }
     }
+
+    this.scene.stop('GalaxyMapScene');
+    if (this.onWarp) this.onWarp(clicked.id);
   }
 
   _getSystemTier(sys) {

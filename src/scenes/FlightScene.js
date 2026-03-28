@@ -1095,9 +1095,12 @@ export default class FlightScene extends Phaser.Scene {
       const star = this.currentSystem.star;
       const distToStar = Phaser.Math.Distance.Between(this.player.x, this.player.y, star.x, star.y);
 
-      // Gravity pull (subtle, within 2.5x radius)
+      // Gravity pull (within 2.5x radius)
+      // v0.6.4.2: Cap pull so full thrust always wins when fleeing directly away.
+      // Max pull = 3 px/frame (~180 px/s²) vs thrust 250 px/s² — escapable.
       if (distToStar < star.radius * 2.5 && this.player.body) {
-        const pullStrength = 15 * (1 - distToStar / (star.radius * 2.5));
+        const rawPull = 15 * (1 - distToStar / (star.radius * 2.5));
+        const pullStrength = Math.min(rawPull, 3);
         const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, star.x, star.y);
         this.player.body.velocity.x += Math.cos(angle) * pullStrength;
         this.player.body.velocity.y += Math.sin(angle) * pullStrength;
@@ -2850,7 +2853,20 @@ export default class FlightScene extends Phaser.Scene {
       startingSystemId: this.startingSystemId,
       clearedSystems: this._clearedSystems || [],
       questManager: this.questManager,
-      onWarp: (id) => { this.scene.resume('FlightScene'); const g = this.currentSystem.gates.find(x => x.targetId === id); if (g) this.startWarp(g); },
+      onWarp: (id, blocked) => {
+        this.scene.resume('FlightScene');
+        if (!id) {
+          // Warp was blocked by quest lock — fire Pepper bark
+          this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+            text: blocked === 'active'
+              ? "Pepper: Vera needs those supplies before we head out, Pax."
+              : "Pepper: We should check in with Commander Vera before headin' out.",
+          }});
+          return;
+        }
+        const g = this.currentSystem.gates.find(x => x.targetId === id);
+        if (g) this.startWarp(g);
+      },
     });
   }
 
