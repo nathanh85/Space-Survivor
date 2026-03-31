@@ -14,12 +14,23 @@ export default class QuestManager {
     this.completedQuests = []; // array of quest IDs
   }
 
-  acceptQuest(questId) {
+  // B25: inventory is optional; if provided, pre-fills collect objectives from current stock
+  acceptQuest(questId, inventory = null) {
     const template = getQuest(questId);
     if (!template) return false;
     if (this.activeQuests.some(q => q.id === questId)) return false;
     if (this.completedQuests.includes(questId)) return false;
     const quest = deepCopy(template);
+
+    if (inventory) {
+      for (const obj of quest.objectives) {
+        if (obj.type === 'collect_resource') {
+          const have = inventory.countItem(obj.resource);
+          obj.current = Math.min(obj.target, have);
+        }
+      }
+    }
+
     this.activeQuests.push(quest);
     return true;
   }

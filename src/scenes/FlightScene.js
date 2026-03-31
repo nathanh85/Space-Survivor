@@ -2203,7 +2203,7 @@ export default class FlightScene extends Phaser.Scene {
           const beat = { speaker: vera.name, portrait: vera.portrait, lines: availQuest.dialogue.offer, choices: null };
           this.dialogueUI.show(beat, () => {
             this.dialogueActive = false;
-            this.questManager.acceptQuest(availQuest.id);
+            this.questManager.acceptQuest(availQuest.id, this.inventory);
             this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: New quest from Vera! Check the HUD." } });
             this._launchHubScene();
           });
@@ -2307,7 +2307,7 @@ export default class FlightScene extends Phaser.Scene {
       };
       this.dialogueUI.show(beat, () => {
         this.dialogueActive = false;
-        this.questManager.acceptQuest(availQuest.id);
+        this.questManager.acceptQuest(availQuest.id, this.inventory);
         this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: New quest accepted! Check the HUD." } });
       });
       return;
@@ -2352,7 +2352,7 @@ export default class FlightScene extends Phaser.Scene {
 
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
-    const pw = 420, ph = 340;
+    const pw = 420, ph = 420;
     const px = W / 2 - pw / 2, py = H / 2 - ph / 2;
 
     // Background
@@ -2433,6 +2433,51 @@ export default class FlightScene extends Phaser.Scene {
         y += 22;
       }
     }
+
+    // ── BUY SECTION (B23) ──────────────────────────────────────────────────
+    const buyHeaderY = py + ph - 150;
+    const buyHdr = this.add.text(px + 16, buyHeaderY, '— BUY —', {
+      fontSize: '9px', fontFamily: FONT, color: '#2ecc71', fontStyle: 'bold',
+    }).setScrollFactor(0).setDepth(701);
+    this.tradeObjects.push(buyHdr);
+
+    // Fuel row
+    const fuelPrice = 10;
+    const fuelBuyY = buyHeaderY + 18;
+    const fuelNameT = this.add.text(px + 16, fuelBuyY, 'Hydrogen Fuel  (+20 fuel)', {
+      fontSize: '9px', fontFamily: FONT, color: '#87CEEB',
+    }).setScrollFactor(0).setDepth(701);
+    this.tradeObjects.push(fuelNameT);
+
+    const fuelPriceT = this.add.text(px + 240, fuelBuyY, fuelPrice + ' cr', {
+      fontSize: '9px', fontFamily: FONT, color: '#f1c40f',
+    }).setScrollFactor(0).setDepth(701);
+    this.tradeObjects.push(fuelPriceT);
+
+    const canAfford = (this.player.credits || 0) >= fuelPrice;
+    const buyBg = this.add.graphics().setScrollFactor(0).setDepth(701);
+    buyBg.fillStyle(0x2ecc71, canAfford ? 0.2 : 0.05);
+    buyBg.fillRect(px + 320, fuelBuyY - 2, 60, 18);
+    buyBg.lineStyle(1, 0x2ecc71, canAfford ? 0.8 : 0.2);
+    buyBg.strokeRect(px + 320, fuelBuyY - 2, 60, 18);
+    this.tradeObjects.push(buyBg);
+
+    const buyText = this.add.text(px + 350, fuelBuyY + 7, 'BUY', {
+      fontSize: '8px', fontFamily: FONT, color: canAfford ? '#2ecc71' : '#555',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(702);
+    this.tradeObjects.push(buyText);
+
+    if (canAfford) {
+      const buyZone = this.add.zone(px + 350, fuelBuyY + 7, 60, 18).setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
+      buyZone.on('pointerdown', () => {
+        if ((this.player.credits || 0) < fuelPrice) return;
+        this.player.credits -= fuelPrice;
+        this.inventory.addItem('fuel', 1);
+        this._renderTradeUI(); // refresh
+      });
+      this.tradeObjects.push(buyZone);
+    }
+    // ── END BUY SECTION ───────────────────────────────────────────────────
 
     // Credits total
     const creditsText = this.add.text(px + 16, py + ph - 50, 'Credits: ' + (this.player.credits || 0), {
@@ -2750,6 +2795,23 @@ export default class FlightScene extends Phaser.Scene {
           this.invTexts.push(this.add.text(dpx + dpw - 10, dpy + dph - 22, res.value + ' cr', {
             fontSize: '8px', fontFamily: FONT, color: '#f1c40f',
           }).setOrigin(1, 0).setScrollFactor(0).setDepth(601));
+
+          // B24: USE button for usable items (fuel)
+          if (slot.resourceId === 'fuel') {
+            g.fillStyle(0x2ecc71, 0.2);
+            g.fillRect(dpx + 10, dpy + dph - 44, dpw - 20, 20);
+            g.lineStyle(1, 0x2ecc71, 0.7);
+            g.strokeRect(dpx + 10, dpy + dph - 44, dpw - 20, 20);
+            this.invTexts.push(this.add.text(dpx + dpw / 2, dpy + dph - 34, 'USE  (+20 Fuel)', {
+              fontSize: '8px', fontFamily: FONT, color: '#2ecc71',
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(602));
+            const useZone = this.add.zone(dpx + dpw / 2, dpy + dph - 34, dpw - 20, 20)
+              .setScrollFactor(0).setDepth(603).setInteractive({ useHandCursor: true });
+            useZone.on('pointerdown', () => {
+              this._useFuelFromInventory(this._selectedInvSlot);
+            });
+            this.invTexts.push(useZone);
+          }
         }
       }
     }

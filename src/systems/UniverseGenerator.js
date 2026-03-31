@@ -72,6 +72,32 @@ export function generateUniverse(seed = 42) {
     systems[0].isStarting = true;
   }
 
+  // B21: Guarantee at least one FRONT system is reachable within 2 jumps of starter.
+  // Grid-adjacency alone can leave the starter surrounded by CORE systems if RNG drops
+  // the border cells. If no FRONT system is within 2 hops, force-connect the nearest one.
+  const startSys = systems.find(s => s.isStarting);
+  if (startSys) {
+    const within2 = new Set([startSys.id]);
+    for (const id1 of startSys.connections) {
+      within2.add(id1);
+      const hop1 = systems.find(s => s.id === id1);
+      if (hop1) for (const id2 of hop1.connections) within2.add(id2);
+    }
+    const hasFrontier = systems.some(s => within2.has(s.id) && s.region.key === 'FRONT');
+    if (!hasFrontier) {
+      const frontSystems = systems.filter(s => s.region.key === 'FRONT');
+      if (frontSystems.length > 0) {
+        frontSystems.sort((a, b) =>
+          Math.hypot(a.col - startSys.col, a.row - startSys.row) -
+          Math.hypot(b.col - startSys.col, b.row - startSys.row)
+        );
+        const target = frontSystems[0];
+        if (!startSys.connections.includes(target.id)) startSys.connections.push(target.id);
+        if (!target.connections.includes(startSys.id)) target.connections.push(startSys.id);
+      }
+    }
+  }
+
   return systems;
 }
 

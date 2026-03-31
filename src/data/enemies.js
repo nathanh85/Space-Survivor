@@ -35,15 +35,16 @@ export const SCOUT = {
 
 // Danger rating → spawn config
 // H2: Danger 1-2 → no spawns (handled by early return in EnemyManager)
+// B22: max counts raised to match spec; intervals shortened so enemies appear promptly
 export const SPAWN_CONFIG = {
   1:  { max: 0,  interval: 0 },
   2:  { max: 0,  interval: 0 },
-  3:  { max: 2,  interval: 14000 },
-  4:  { max: 2,  interval: 12000 },
-  5:  { max: 3,  interval: 9000 },
-  6:  { max: 4,  interval: 8000 },
-  7:  { max: 5,  interval: 7000 },
-  8:  { max: 6,  interval: 5500 },
-  9:  { max: 7,  interval: 4500 },
-  10: { max: 8,  interval: 3500 },
+  3:  { max: 3,  interval: 8000 },
+  4:  { max: 4,  interval: 7000 },
+  5:  { max: 5,  interval: 6000 },
+  6:  { max: 6,  interval: 5000 },
+  7:  { max: 7,  interval: 4500 },
+  8:  { max: 8,  interval: 4000 },
+  9:  { max: 9,  interval: 3500 },
+  10: { max: 10, interval: 3000 },
 };

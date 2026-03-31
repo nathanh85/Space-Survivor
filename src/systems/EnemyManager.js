@@ -132,5 +132,7 @@ export default class EnemyManager {
     // Reset zone tracking counters
     this.totalKills = 0;
     this.totalSpawned = 0;
+    // B22: Reset spawn timer so first spawn on new system entry is immediate
+    this.lastSpawnTime = -99999;
   }
 }
