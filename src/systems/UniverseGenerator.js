@@ -98,6 +98,19 @@ export function generateUniverse(seed = 42) {
     }
   }
 
+  // B23/FIX1: Guarantee at least one trading post per region so fuel is always purchasable.
+  // Mark one system per region as hasTradingPost=true; generateSystem() will honour this flag.
+  for (const regionKey of ['CORE', 'FRONT', 'OUTER', 'RIFT']) {
+    const regionSystems = systems.filter(s => s.region.key === regionKey && !s.isStarting);
+    if (regionSystems.length === 0) continue;
+    // Pick the system closest to the center of its region to be the guaranteed trade hub
+    const cx = UNIVERSE_COLS / 2, cy = UNIVERSE_ROWS / 2;
+    regionSystems.sort((a, b) =>
+      Math.hypot(a.col - cx, a.row - cy) - Math.hypot(b.col - cx, b.row - cy)
+    );
+    regionSystems[0].hasTradingPost = true;
+  }
+
   return systems;
 }
 
@@ -213,8 +226,21 @@ export function generateSystem(sysData, universeData) {
     });
   }
 
+  // B23/FIX1: Region-guaranteed trading post (hasTradingPost flag set by generateUniverse)
+  if (!sysData.isStarting && sysData.hasTradingPost) {
+    const angle = rng.float(0, Math.PI * 2);
+    const dist = rng.int(450, 800);
+    system.stations.push({
+      x: system.star.x + Math.cos(angle) * dist,
+      y: system.star.y + Math.sin(angle) * dist,
+      name: rng.pick(STATION_PREFIXES) + ' ' + rng.pick(STATION_SUFFIXES),
+      size: 16,
+      stationType: 'trading_post',
+    });
+  }
+
   // Core Worlds: 30% chance of an extra trading post
-  const addTradingPost = !sysData.isStarting && sysData.region.key === 'CORE' && rng.chance(0.3);
+  const addTradingPost = !sysData.isStarting && !sysData.hasTradingPost && sysData.region.key === 'CORE' && rng.chance(0.3);
   if (addTradingPost) {
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(450, 850);
@@ -239,6 +265,35 @@ export function generateSystem(sysData, universeData) {
       size: 16,
       stationType: sType,
     });
+  }
+
+  // B23/FIX1: Non-trading-post systems always have at least 4 ice asteroids so the
+  // player can mine fuel even if no shop is present.
+  if (!sysData.isStarting && !sysData.hasTradingPost) {
+    const iceType = ASTEROID_TYPES.ice;
+    let iceCount = 0;
+    for (const a of system.asteroids) { if (a.asteroidType === 'ice') iceCount++; }
+    while (iceCount < 4) {
+      const angle = rng.float(0, Math.PI * 2);
+      const dist = rng.int(350, 1100);
+      const ax = system.star.x + Math.cos(angle) * dist + rng.int(-50, 50);
+      const ay = system.star.y + Math.sin(angle) * dist + rng.int(-50, 50);
+      const aSize = rng.int(12, 22);
+      system.asteroids.push({
+        x: ax, y: ay,
+        size: aSize,
+        hp: aSize * 3,
+        maxHp: aSize * 3,
+        asteroidType: 'ice',
+        color: rng.pick(iceType.colors),
+        rotation: rng.float(0, Math.PI * 2),
+        rotSpeed: rng.float(-0.015, 0.015),
+        shapeSeed: rng.int(1, 999999),
+        resourceId: pickDrop(rng, iceType.drops) || 'fuel',
+        mined: false,
+      });
+      iceCount++;
+    }
   }
 
   // Warp gates

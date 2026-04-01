@@ -1096,14 +1096,23 @@ export default class FlightScene extends Phaser.Scene {
       const distToStar = Phaser.Math.Distance.Between(this.player.x, this.player.y, star.x, star.y);
 
       // Gravity pull (within 2.5x radius)
-      // v0.6.4.2: Cap pull so full thrust always wins when fleeing directly away.
-      // Max pull = 3 px/frame (~180 px/s²) vs thrust 250 px/s² — escapable.
+      // v0.6.5.1: Zero gravity when player is actively thrusting away from the star —
+      // ensures escape is always possible regardless of fuel level or max-velocity cap.
       if (distToStar < star.radius * 2.5 && this.player.body) {
         const rawPull = 15 * (1 - distToStar / (star.radius * 2.5));
         const pullStrength = Math.min(rawPull, 3);
         const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, star.x, star.y);
-        this.player.body.velocity.x += Math.cos(angle) * pullStrength;
-        this.player.body.velocity.y += Math.sin(angle) * pullStrength;
+
+        // Dot product: thrust direction vs away-from-star direction
+        const awayX = this.player.x - star.x, awayY = this.player.y - star.y;
+        const thrustX = Math.cos(this.player.shipAngle), thrustY = Math.sin(this.player.shipAngle);
+        const dot = awayX * thrustX + awayY * thrustY;
+        const escapingThrust = this.player.isThrusting && dot > 0;
+
+        if (!escapingThrust) {
+          this.player.body.velocity.x += Math.cos(angle) * pullStrength;
+          this.player.body.velocity.y += Math.sin(angle) * pullStrength;
+        }
       }
 
       // Warning zone (1.8x radius)
