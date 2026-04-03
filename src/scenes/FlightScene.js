@@ -436,8 +436,10 @@ export default class FlightScene extends Phaser.Scene {
     this.drawOrbits(sys);
     this.drawStaticEntities();
 
-    // Spawn at safe distance from star, random direction
-    const spawnAngle = Math.random() * Math.PI * 2;
+    // Spawn at safe distance from star — seeded angle so entry point is always
+    // consistent for a given system (B28: same layout feel on re-entry)
+    const spawnRng = new RNG(sysData.seed + 7777);
+    const spawnAngle = spawnRng.float(0, Math.PI * 2);
     const spawnDist = (sys.star.radius || 50) * 4 + 200;
     this.player.setPosition(
       sys.star.x + Math.cos(spawnAngle) * spawnDist,
@@ -1127,11 +1129,11 @@ export default class FlightScene extends Phaser.Scene {
 
       // Damage zone (1.2x radius) — slingshot push + heavy damage
       if (distToStar < star.radius * 1.2) {
-        // Slingshot push: fling player outward at 300 force
+        // B35: gentle push outward — firm drift, not a pinball launch
         const pushAngle = Phaser.Math.Angle.Between(star.x, star.y, this.player.x, this.player.y);
         if (this.player.body) {
-          this.player.body.velocity.x = Math.cos(pushAngle) * 300;
-          this.player.body.velocity.y = Math.sin(pushAngle) * 300;
+          this.player.body.velocity.x = Math.cos(pushAngle) * 120;
+          this.player.body.velocity.y = Math.sin(pushAngle) * 120;
         }
 
         // Damage: 10 hull per second on cooldown timer
@@ -1408,6 +1410,11 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   _showBark(text, speaker) {
+    // B27: halt ship when a bark fires — prevents thrust-sticking
+    if (this.player && this.player.body) {
+      this.player.body.setAcceleration(0, 0);
+      this.player.isThrusting = false;
+    }
     this.sound_mgr.playBarkBlip();
     const W = this.cameras.main.width;
 
@@ -2176,7 +2183,7 @@ export default class FlightScene extends Phaser.Scene {
   tryDockOrLand() {
     if (this.invOpen || this.dialogueActive || this.tradeOpen) return;
     if (this.nearPlanetZion) {
-      this.autoSave();
+      // B32: save on hub LAUNCH (returnFromHub), not on dock entry
       // H3: Show Vera's quest dialogue on hub dock before launching HubScene
       const vera = NPCS.find(n => n.id === 'quest_vera');
       if (vera) {
@@ -2186,6 +2193,7 @@ export default class FlightScene extends Phaser.Scene {
           const beat = { speaker: vera.name, portrait: vera.portrait, lines: completeQuest.dialogue.complete, choices: null };
           this.dialogueUI.show(beat, () => {
             this.dialogueActive = false;
+            const deliveredObjs = completeQuest.objectives ? [...completeQuest.objectives] : [];
             const rewards = this.questManager.turnInQuest(completeQuest.id, this.inventory);
             if (rewards) {
               if (rewards.credits) this.player.credits += rewards.credits;
@@ -2199,7 +2207,7 @@ export default class FlightScene extends Phaser.Scene {
                 }
               }
               if (rewards.fuel) this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + rewards.fuel);
-              this._showRewardPopup(rewards);
+              this._showRewardPopup(rewards, deliveredObjs);
               this.autoSave();
             }
             this._launchHubScene();
@@ -2253,7 +2261,7 @@ export default class FlightScene extends Phaser.Scene {
 
   tryDock() {
     if (!this.nearStation || this.invOpen || this.tradeOpen) return;
-    this.autoSave();
+    // B32: save after quest interactions, not on dock entry
     // Emergency fuel refill
     if (this.outOfFuel) {
       this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + 25);
@@ -2273,6 +2281,7 @@ export default class FlightScene extends Phaser.Scene {
       };
       this.dialogueUI.show(beat, () => {
         this.dialogueActive = false;
+        const deliveredObjs = completeQuest.objectives ? [...completeQuest.objectives] : [];
         const rewards = this.questManager.turnInQuest(completeQuest.id, this.inventory);
         if (rewards) {
           if (rewards.credits) this.player.credits += rewards.credits;
@@ -2286,7 +2295,7 @@ export default class FlightScene extends Phaser.Scene {
             }
           }
           if (rewards.fuel) this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + rewards.fuel);
-          this._showRewardPopup(rewards);
+          this._showRewardPopup(rewards, deliveredObjs);
           this.autoSave();
         }
       });
@@ -2318,6 +2327,7 @@ export default class FlightScene extends Phaser.Scene {
         this.dialogueActive = false;
         this.questManager.acceptQuest(availQuest.id, this.inventory);
         this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: New quest accepted! Check the HUD." } });
+        this.autoSave(); // B32: save after quest accept
       });
       return;
     }
@@ -2596,12 +2606,25 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   returnFromHub() {
+    this.autoSave(); // B32: save on launch, not dock
     this.scene.resume('FlightScene');
     const zion = this.planets.find(p => p.isHub);
-    if (zion) {
-      this.player.setPosition(zion.x, zion.y + 120);
-      if (this.player.body) this.player.body.setVelocity(0, 0);
+    if (zion && this.currentSystem) {
+      // B30: spawn at orbit distance from Zion, pointing away from star
+      const star = this.currentSystem.star;
+      const awayAngle = Phaser.Math.Angle.Between(star.x, star.y, zion.x, zion.y);
+      const spawnDist = (zion.radius || 40) + 80;
+      this.player.setPosition(
+        zion.x + Math.cos(awayAngle) * spawnDist,
+        zion.y + Math.sin(awayAngle) * spawnDist
+      );
+      this.player.shipAngle = awayAngle; // face away from planet
     }
+    if (this.player.body) {
+      this.player.body.setVelocity(0, 0);
+      this.player.body.setAcceleration(0, 0);
+    }
+    this.player.isThrusting = false;
   }
 
   // ========== HUD ==========
@@ -2886,28 +2909,38 @@ export default class FlightScene extends Phaser.Scene {
     this._selectedInvSlot = null;
   }
 
-  // B17: Quest reward popup — floating text showing what was earned
-  _showRewardPopup(rewards) {
+  // B17/F12: Quest reward popup — "Delivered: X → Received: Y" clarity
+  _showRewardPopup(rewards, deliveredObjs = []) {
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
-    const parts = [];
-    if (rewards.credits) parts.push('+' + rewards.credits + ' CR');
-    if (rewards.xp) parts.push('+' + rewards.xp + ' XP');
-    if (rewards.fuel) parts.push('+' + rewards.fuel + ' Fuel');
-    if (parts.length === 0) return;
 
-    const popup = this.add.text(W / 2, H / 2 - 80, 'QUEST COMPLETE!\n' + parts.join('  '), {
-      fontSize: '14px', fontFamily: FONT, color: '#f1c40f',
+    const receivedParts = [];
+    if (rewards.credits) receivedParts.push('+' + rewards.credits + ' CR');
+    if (rewards.xp) receivedParts.push('+' + rewards.xp + ' XP');
+    if (rewards.fuel) receivedParts.push('+' + rewards.fuel + ' Fuel');
+    if (receivedParts.length === 0) return;
+
+    let lines = 'QUEST COMPLETE!';
+    if (deliveredObjs.length > 0) {
+      const delParts = deliveredObjs
+        .filter(o => o.type === 'collect_resource')
+        .map(o => { const r = RESOURCES[o.resource]; return o.target + ' ' + (r ? r.name : o.resource); });
+      if (delParts.length > 0) lines += '\nDelivered: ' + delParts.join(', ');
+    }
+    lines += '\nReceived: ' + receivedParts.join('  ');
+
+    const popup = this.add.text(W / 2, H / 2 - 80, lines, {
+      fontSize: '12px', fontFamily: FONT, color: '#f1c40f',
       stroke: '#000', strokeThickness: 3,
-      align: 'center',
+      align: 'center', lineSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(900);
 
     this.tweens.add({
       targets: popup,
       y: popup.y - 50,
       alpha: 0,
-      duration: 2500,
-      delay: 800,
+      duration: 3000,
+      delay: 1200,
       onComplete: () => popup.destroy(),
     });
   }

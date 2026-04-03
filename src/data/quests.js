@@ -12,14 +12,14 @@ export const QUESTS = [
     requiredLevel: 1,
     requires: [],
     objectives: [
-      { type: 'collect_resource', resource: 'iron', target: 10, current: 0 },
-      { type: 'collect_resource', resource: 'carbon', target: 5, current: 0 },
+      { type: 'collect_resource', resource: 'iron', target: 8, current: 0 },
+      { type: 'collect_resource', resource: 'carbon', target: 4, current: 0 },
     ],
     rewards: { credits: 50, xp: 75 },
     dialogue: {
       offer: [
         "Look kids, the Outpost's runnin' low on supplies.",
-        "I need 10 Iron Ore and 5 Carbon. Think you can scrounge some up?",
+        "I need 8 Iron Ore and 4 Carbon. Think you can scrounge some up?",
         "Mine some asteroids — shouldn't be too hard out there.",
       ],
       inProgress: [

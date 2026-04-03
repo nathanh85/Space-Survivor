@@ -257,9 +257,11 @@ export default class TitleScene extends Phaser.Scene {
     });
     elements.push(noZone);
 
-    // ESC also closes
+    // ESC closes the prompt — stop propagation so browser fullscreen is unaffected
     const escHandler = (e) => {
       if (e.code === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
         elements.forEach(el => { if (el && el.destroy) el.destroy(); });
         this.input.keyboard.off('keydown', escHandler);
       }

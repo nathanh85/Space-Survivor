@@ -172,14 +172,15 @@ export default class GalaxyMapScene extends Phaser.Scene {
     this.cameras.main.fadeIn(300, 0, 0, 0);
     this.input.keyboard.on('keydown-M', () => this.closeMap());
     this.input.keyboard.on('keydown-ESC', () => this.closeMap());
-    this.input.keyboard.on('keydown-TAB', (e) => {
-      e.preventDefault();
+    const openInv = () => {
       this.closeMap();
       this.time.delayedCall(100, () => {
         const flight = this.scene.get('FlightScene');
         if (flight && flight.toggleInventory) flight.toggleInventory();
       });
-    });
+    };
+    this.input.keyboard.on('keydown-TAB', (e) => { e.preventDefault(); openInv(); });
+    this.input.keyboard.on('keydown-I', openInv); // B31: I opens inventory from map
   }
 
   _buildLegend(W) {

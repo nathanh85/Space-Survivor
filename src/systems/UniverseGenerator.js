@@ -181,12 +181,13 @@ export function generateSystem(sysData, universeData) {
     return 'iron';
   }
 
-  const maxByRegion = { CORE: 25, FRONT: 35, OUTER: 45, RIFT: 55 };
-  const maxAsteroids = maxByRegion[sysData.region.key] || 35;
-  const targetAsteroids = rng.int(10, maxAsteroids);
+  // B26: doubled counts and spread to fill the system
+  const maxByRegion = { CORE: 50, FRONT: 70, OUTER: 90, RIFT: 110 };
+  const maxAsteroids = maxByRegion[sysData.region.key] || 70;
+  const targetAsteroids = rng.int(Math.floor(maxAsteroids / 2), maxAsteroids);
   for (let i = 0; i < targetAsteroids; i++) {
     const angle = rng.float(0, Math.PI * 2);
-    const dist = rng.int(300, 1200);
+    const dist = rng.int(400, 2200);
     const ax = system.star.x + Math.cos(angle) * dist + rng.int(-60, 60);
     const ay = system.star.y + Math.sin(angle) * dist + rng.int(-60, 60);
     const tooClose = system.asteroids.some(e => Math.hypot(ax - e.x, ay - e.y) < 40);

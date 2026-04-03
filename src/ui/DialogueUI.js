@@ -112,6 +112,12 @@ export default class DialogueUI {
   }
 
   show(beat, onComplete) {
+    // B27: halt ship thrust whenever dialogue opens
+    const scene = this.scene;
+    if (scene && scene.player && scene.player.body) {
+      scene.player.body.setAcceleration(0, 0);
+      scene.player.isThrusting = false;
+    }
     this.currentBeat = beat;
     this.currentLineIndex = 0;
     this.onComplete = onComplete || null;
