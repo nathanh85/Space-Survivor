@@ -85,6 +85,7 @@ export default class FlightScene extends Phaser.Scene {
     this._starWarned = false;
 
     // Text queue (barks, transmissions, dialogues — one at a time)
+    this._barkActive = false;
     this.textQueue = new TextQueue();
     this.textQueue.onShowCallback = (item) => this._showQueueItem(item);
     this.textQueue.onDismissCallback = (item) => this._dismissQueueItem(item);
@@ -933,8 +934,14 @@ export default class FlightScene extends Phaser.Scene {
       return;
     }
 
-    // Player
-    this.player.update(this.cursors, this.input.activePointer);
+    // B27: freeze player input while bark/text overlay is active
+    if (this._barkActive) {
+      this.player.body.setVelocity(0, 0);
+      this.player.body.setAcceleration(0, 0);
+      this.player.isThrusting = false;
+    } else {
+      this.player.update(this.cursors, this.input.activePointer);
+    }
 
     // Ship-asteroid collision
     for (const a of this.asteroids) {
@@ -1217,11 +1224,11 @@ export default class FlightScene extends Phaser.Scene {
   updatePrompt(W, H) {
     if (this.nearPlanetZion) {
       this.promptText.setText('[F] Dock at The Outpost (Hub)')
-        .setColor('#2ecc71').setPosition(W / 2, H - 60).setVisible(true);
+        .setColor('#2ecc71').setPosition(W / 2, H - 76).setVisible(true);
     } else if (this.nearGate) {
       const gt = this.nearGate;
       this.promptText.setText('[E] WARP \u2192 ' + gt.targetName + (gt.isDungeon ? ' \u26A0 DUNGEON' : ''))
-        .setColor(gt.isDungeon ? '#ff00ff' : '#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
+        .setColor(gt.isDungeon ? '#ff00ff' : '#00d4ff').setPosition(W / 2, H - 76).setVisible(true);
     } else if (this.nearStation) {
       const st = this.nearStation;
       let dockLabel;
@@ -1241,7 +1248,7 @@ export default class FlightScene extends Phaser.Scene {
         }
       }
       this.promptText.setText(dockLabel)
-        .setColor(this.outOfFuel ? '#f1c40f' : '#00d4ff').setPosition(W / 2, H - 60).setVisible(true);
+        .setColor(this.outOfFuel ? '#f1c40f' : '#00d4ff').setPosition(W / 2, H - 76).setVisible(true);
     } else {
       this.promptText.setVisible(false);
     }
@@ -1394,6 +1401,7 @@ export default class FlightScene extends Phaser.Scene {
 
   _dismissQueueItem(item) {
     if (item.type === 'bark') {
+      this._barkActive = false;
       if (this.barkTimer) this.barkTimer.remove();
       if (this._barkTypewriter) { this._barkTypewriter.remove(); this._barkTypewriter = null; }
       // Clean up all bark game objects
@@ -1410,11 +1418,13 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   _showBark(text, speaker) {
-    // B27: halt ship when a bark fires — prevents thrust-sticking
+    // B27: halt ship when a bark fires — zero velocity+acceleration+thrust
     if (this.player && this.player.body) {
+      this.player.body.setVelocity(0, 0);
       this.player.body.setAcceleration(0, 0);
       this.player.isThrusting = false;
     }
+    this._barkActive = true;
     this.sound_mgr.playBarkBlip();
     const W = this.cameras.main.width;
 
@@ -1497,11 +1507,11 @@ export default class FlightScene extends Phaser.Scene {
       this.tweens.add({ targets: obj, alpha: 1, duration: 200 });
     }
 
-    // Typewriter effect — 40 chars/sec, then 6s hold after complete
+    // Typewriter effect — 36 chars/sec (B38: 10% slower), then hold after complete
     if (this.barkTimer) this.barkTimer.remove();
     if (this._barkTypewriter) this._barkTypewriter.remove();
     let charIdx = 0;
-    const BARK_CHARS_PER_SEC = 40;
+    const BARK_CHARS_PER_SEC = 36;
     this._barkTypewriterText = displayText;
     this._barkTypewriter = this.time.addEvent({
       delay: 1000 / BARK_CHARS_PER_SEC, // 25ms per char
@@ -1554,11 +1564,12 @@ export default class FlightScene extends Phaser.Scene {
 
     this.transText.setColor(color);
 
-    // Show portrait for M.O.T.H.E.R. transmissions
+    // Show portrait for M.O.T.H.E.R. transmissions — B37: constrain within box
     if (this.transPortrait) { this.transPortrait.destroy(); this.transPortrait = null; }
     if (isMother && this.textures.exists('mother')) {
-      this.transPortrait = this.add.image(W / 2 - 260, 160, 'mother')
-        .setDisplaySize(64, 64).setScrollFactor(0).setDepth(521);
+      // Portrait sits left of text, vertically aligned with transmission box top
+      this.transPortrait = this.add.image(0, 0, 'mother')
+        .setDisplaySize(48, 48).setScrollFactor(0).setDepth(521).setVisible(false);
       this.transContainer.add(this.transPortrait);
     }
 
@@ -1634,10 +1645,21 @@ export default class FlightScene extends Phaser.Scene {
     this.transGfx.clear();
     const bounds = this.transText.getBounds();
     const pad = 12;
+    // B37: widen box left to include portrait if present
+    const hasPortrait = this.transPortrait && this.transPortrait.visible !== false;
+    const portraitExtra = hasPortrait ? 56 : 0; // 48px portrait + 8px gap
+    const boxX = bounds.x - pad - portraitExtra;
+    const boxW = bounds.width + pad * 2 + portraitExtra;
     this.transGfx.fillStyle(0x000000, 0.85);
-    this.transGfx.fillRect(bounds.x - pad, bounds.y - pad, bounds.width + pad * 2, bounds.height + pad * 2);
+    this.transGfx.fillRect(boxX, bounds.y - pad, boxW, bounds.height + pad * 2);
     this.transGfx.lineStyle(1, this.transBorderColor, 0.6);
-    this.transGfx.strokeRect(bounds.x - pad, bounds.y - pad, bounds.width + pad * 2, bounds.height + pad * 2);
+    this.transGfx.strokeRect(boxX, bounds.y - pad, boxW, bounds.height + pad * 2);
+    // Position portrait inside box
+    if (this.transPortrait) {
+      const pX = boxX + pad + 24; // center of 48px portrait
+      const pY = bounds.y + bounds.height / 2;
+      this.transPortrait.setPosition(pX, pY).setVisible(true);
+    }
   }
 
   advanceTransmission() {
@@ -2183,7 +2205,7 @@ export default class FlightScene extends Phaser.Scene {
   tryDockOrLand() {
     if (this.invOpen || this.dialogueActive || this.tradeOpen) return;
     if (this.nearPlanetZion) {
-      // B32: save on hub LAUNCH (returnFromHub), not on dock entry
+      this.autoSave(); // save on every dock (reverted B32 regression)
       // H3: Show Vera's quest dialogue on hub dock before launching HubScene
       const vera = NPCS.find(n => n.id === 'quest_vera');
       if (vera) {
@@ -2261,7 +2283,7 @@ export default class FlightScene extends Phaser.Scene {
 
   tryDock() {
     if (!this.nearStation || this.invOpen || this.tradeOpen) return;
-    // B32: save after quest interactions, not on dock entry
+    this.autoSave(); // save on every station dock
     // Emergency fuel refill
     if (this.outOfFuel) {
       this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + 25);
@@ -2653,8 +2675,8 @@ export default class FlightScene extends Phaser.Scene {
     this.sysInfoTexts[1].setText('Region: ' + sd.region.name).setPosition(14, iy + 20).setColor(sd.region.color);
     this.sysInfoTexts[2].setText('Danger: ' + '\u26A0'.repeat(Math.min(sd.danger, 5)) + ' ' + sd.danger + '/10')
       .setPosition(14, iy + 34).setColor(DANGER_COLORS[sd.danger] || '#e74c3c');
-    this.controlsText.setPosition(W - 10, H - 10);
-    this.versionText.setPosition(W - 10, H - 22);
+    this.controlsText.setPosition(W - 10, H - 6);
+    this.versionText.setPosition(W - 10, H - 18);
 
     // Combat HUD
     this.weaponLabel.setText('LASER  DMG:' + this.weaponSystem.getDamage() + '  RNG:' + this.weaponSystem.getRange()).setPosition(10, 102);
@@ -2906,7 +2928,13 @@ export default class FlightScene extends Phaser.Scene {
       fontSize: '12px', fontFamily: FONT, color: '#f1c40f', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(800);
     this.tweens.add({ targets: ft, y: ft.y - 30, alpha: 0, duration: 900, onComplete: () => ft.destroy() });
-    this._selectedInvSlot = null;
+    // B40: immediately update fuel bar + redraw inventory
+    this.updateHUD(W, H);
+    // If slot is now empty, deselect; otherwise keep selected for repeat use
+    const remainingSlot = this.inventory.slots[slotIndex];
+    if (!remainingSlot || remainingSlot.resourceId !== 'fuel') {
+      this._selectedInvSlot = null;
+    }
   }
 
   // B17/F12: Quest reward popup — "Delivered: X → Received: Y" clarity

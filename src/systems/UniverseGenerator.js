@@ -254,15 +254,22 @@ export function generateSystem(sysData, universeData) {
     });
   }
 
+  // B39: Station names must match their type to avoid misleading labels
+  const STATION_NAME_BY_TYPE = {
+    trading_post: ['Trading Post', 'Depot', 'Hub'],
+    outpost: ['Outpost', 'Beacon', 'Hub'],
+    refinery: ['Refinery', 'Depot'],
+  };
   const numStations = rng.int(0, 2);
   for (let i = 0; i < numStations; i++) {
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(400, 900);
     const sType = rng.pick(STATION_TYPES);
+    const prefix = rng.pick(STATION_NAME_BY_TYPE[sType] || STATION_PREFIXES);
     system.stations.push({
       x: system.star.x + Math.cos(angle) * dist,
       y: system.star.y + Math.sin(angle) * dist,
-      name: rng.pick(STATION_PREFIXES) + ' ' + rng.pick(STATION_SUFFIXES),
+      name: prefix + ' ' + rng.pick(STATION_SUFFIXES),
       size: 16,
       stationType: sType,
     });

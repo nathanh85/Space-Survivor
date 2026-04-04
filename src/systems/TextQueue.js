@@ -87,10 +87,11 @@ export default class TextQueue {
   }
 
   getBarkHoldTime() {
+    // B38: +20% linger — 3600ms chained, 7200ms standalone
     if (this.queue.length > 0 && this.queue[0].type === 'bark') {
-      return 3000;
+      return 3600;
     }
-    return 6000;
+    return 7200;
   }
 
   dismiss() {
