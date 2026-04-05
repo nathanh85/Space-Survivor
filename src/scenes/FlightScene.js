@@ -85,7 +85,6 @@ export default class FlightScene extends Phaser.Scene {
     this._starWarned = false;
 
     // Text queue (barks, transmissions, dialogues — one at a time)
-    this._barkActive = false;
     this.textQueue = new TextQueue();
     this.textQueue.onShowCallback = (item) => this._showQueueItem(item);
     this.textQueue.onDismissCallback = (item) => this._dismissQueueItem(item);
@@ -934,14 +933,8 @@ export default class FlightScene extends Phaser.Scene {
       return;
     }
 
-    // B27: freeze player input while bark/text overlay is active
-    if (this._barkActive) {
-      this.player.body.setVelocity(0, 0);
-      this.player.body.setAcceleration(0, 0);
-      this.player.isThrusting = false;
-    } else {
-      this.player.update(this.cursors, this.input.activePointer);
-    }
+    // Player
+    this.player.update(this.cursors, this.input.activePointer);
 
     // Ship-asteroid collision
     for (const a of this.asteroids) {
@@ -1401,7 +1394,6 @@ export default class FlightScene extends Phaser.Scene {
 
   _dismissQueueItem(item) {
     if (item.type === 'bark') {
-      this._barkActive = false;
       if (this.barkTimer) this.barkTimer.remove();
       if (this._barkTypewriter) { this._barkTypewriter.remove(); this._barkTypewriter = null; }
       // Clean up all bark game objects
@@ -1418,13 +1410,12 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   _showBark(text, speaker) {
-    // B27: halt ship when a bark fires — zero velocity+acceleration+thrust
+    // B27: one-time velocity clear when bark fires — does NOT freeze gameplay
     if (this.player && this.player.body) {
       this.player.body.setVelocity(0, 0);
       this.player.body.setAcceleration(0, 0);
       this.player.isThrusting = false;
     }
-    this._barkActive = true;
     this.sound_mgr.playBarkBlip();
     const W = this.cameras.main.width;
 
