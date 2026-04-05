@@ -1228,17 +1228,11 @@ export default class FlightScene extends Phaser.Scene {
       if (this.outOfFuel) {
         dockLabel = '[F] Emergency Dock \u2014 Free Fuel';
       } else {
-        // H3/H4/Dock Prompt: format by station type
+        // B39: dock prompt = "[F] Dock at <name> (<type label>)"
         const sType = st.stationType || 'outpost';
-        if (sType === 'trading_post') {
-          dockLabel = '[F] Dock at Trading Post ' + st.name;
-        } else if (sType === 'refinery') {
-          dockLabel = '[F] Dock at Refinery ' + st.name;
-        } else if (sType === 'hub') {
-          dockLabel = '[F] Dock at The Outpost (Hub)';
-        } else {
-          dockLabel = '[F] Dock at Outpost ' + st.name;
-        }
+        const typeLabel = sType === 'trading_post' ? 'Trading Post'
+          : sType === 'refinery' ? 'Refinery' : 'Outpost';
+        dockLabel = '[F] Dock at ' + st.name + ' (' + typeLabel + ')';
       }
       this.promptText.setText(dockLabel)
         .setColor(this.outOfFuel ? '#f1c40f' : '#00d4ff').setPosition(W / 2, H - 76).setVisible(true);
@@ -2269,6 +2263,7 @@ export default class FlightScene extends Phaser.Scene {
 
   tryDock() {
     if (!this.nearStation || this.invOpen || this.tradeOpen) return;
+    console.log('Docking at:', this.nearStation.name, 'Type:', this.nearStation.stationType);
     this.autoSave(); // save on every station dock
     // Emergency fuel refill
     if (this.outOfFuel) {
