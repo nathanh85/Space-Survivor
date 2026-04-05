@@ -117,7 +117,7 @@ export default class DialogueUI {
     if (scene && scene.player && scene.player.body) {
       scene.player.body.setVelocity(0, 0);
       scene.player.body.setAcceleration(0, 0);
-      scene.player.isThrusting = false;
+      scene.player.isMoving = false;
     }
     this.currentBeat = beat;
     this.currentLineIndex = 0;
