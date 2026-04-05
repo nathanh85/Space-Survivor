@@ -57,6 +57,7 @@ export default class DebugManager {
       this.teleportOpen = false;
       this.commandBarOpen = false;
       this.commandText = '';
+      this.scene.input.keyboard.enabled = true; // always re-enable on close
       this._clearTexts();
     }
     this._updateBadge();
@@ -78,6 +79,7 @@ export default class DebugManager {
       if (e.key === 'Escape') {
         this.commandBarOpen = false;
         this.commandText = '';
+        this.scene.input.keyboard.enabled = true; // re-enable game shortcuts
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -88,6 +90,7 @@ export default class DebugManager {
         }
         this.commandBarOpen = false;
         this.commandText = '';
+        this.scene.input.keyboard.enabled = true; // re-enable game shortcuts
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -166,6 +169,7 @@ export default class DebugManager {
     if (e.key === '`') {
       this.commandBarOpen = true;
       this.commandText = '';
+      this.scene.input.keyboard.enabled = false; // disable game shortcuts
       e.preventDefault();
       e.stopPropagation();
     }
