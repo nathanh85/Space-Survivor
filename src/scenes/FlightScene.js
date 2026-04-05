@@ -18,6 +18,7 @@ import WeaponSystem from '../systems/WeaponSystem.js';
 import EnemyManager from '../systems/EnemyManager.js';
 import SaveManager from '../systems/SaveManager.js';
 import QuestManager from '../systems/QuestManager.js';
+import DebugManager from '../systems/DebugManager.js';
 import { getQuest } from '../data/quests.js';
 
 export default class FlightScene extends Phaser.Scene {
@@ -134,6 +135,15 @@ export default class FlightScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-F', () => { if (!this.dialogueActive) this.tryDockOrLand(); });
     this.input.keyboard.on('keydown-TAB', (e) => { e.preventDefault(); if (!this.dialogueActive) this.toggleInventory(); });
     this.input.keyboard.on('keydown-I', () => { if (!this.dialogueActive) this.toggleInventory(); });
+
+    // Debug mode (Ctrl+Shift+D)
+    this.debugManager = new DebugManager(this);
+    this.input.keyboard.on('keydown-D', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault();
+        this.debugManager.toggle();
+      }
+    });
 
     // Init audio on first interaction
     this.input.on('pointerdown', (pointer) => {
@@ -949,7 +959,7 @@ export default class FlightScene extends Phaser.Scene {
 
         // Impact damage based on speed (with 1s cooldown)
         const impactSpeed = Math.hypot(this.player.body.velocity.x, this.player.body.velocity.y);
-        if (impactSpeed > 50 && time > this.asteroidDamageCooldown) {
+        if (impactSpeed > 50 && time > this.asteroidDamageCooldown && !(this.debugManager && this.debugManager.godMode)) {
           this.asteroidDamageCooldown = time + 1000;
           const dmg = Math.floor(impactSpeed / 20); // 5-15 range
           this.player.hull -= dmg;
@@ -1137,7 +1147,7 @@ export default class FlightScene extends Phaser.Scene {
         }
 
         // Damage: 10 hull per second on cooldown timer
-        if (time > this.starDamageCooldown) {
+        if (time > this.starDamageCooldown && !(this.debugManager && this.debugManager.godMode)) {
           this.starDamageCooldown = time + 1000; // 1 second cooldown
           this.player.hull -= 10;
           if (this.player.hull < 0) this.player.hull = 0;
@@ -1193,6 +1203,9 @@ export default class FlightScene extends Phaser.Scene {
     this.updateMinimap(W, H);
     this.updateCrosshair(W, H);
     this.updatePrompt(W, H);
+
+    // Debug overlay (renders on top of everything)
+    if (this.debugManager) this.debugManager.update(W, H);
   }
 
   // ========== IDLE BARK SYSTEM ==========
@@ -1968,6 +1981,7 @@ export default class FlightScene extends Phaser.Scene {
 
   playerTakeDamage(amount) {
     if (this.playerDead) return;
+    if (this.debugManager && this.debugManager.godMode) return;
     this.sound_mgr.playPlayerHit();
 
     // Pause shield regen for 3s
@@ -3007,13 +3021,14 @@ export default class FlightScene extends Phaser.Scene {
     }
     // H6: Warp costs WARP_FUEL_COST fuel; block if not enough
     const WARP_FUEL_COST = 15;
-    if (this.player.fuel < WARP_FUEL_COST) {
+    const debugInfFuel = this.debugManager && this.debugManager.infiniteFuel;
+    if (!debugInfFuel && this.player.fuel < WARP_FUEL_COST) {
       this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
         text: "Pepper: We're running on fumes, Pax. Need fuel!",
       }});
       return;
     }
-    this.player.fuel = Math.max(0, this.player.fuel - WARP_FUEL_COST);
+    if (!debugInfFuel) this.player.fuel = Math.max(0, this.player.fuel - WARP_FUEL_COST);
     this.sound_mgr.playWarpWhoosh();
     this.sound_mgr.stopAll();
 
