@@ -126,15 +126,16 @@ export default class FlightScene extends Phaser.Scene {
     });
     // Prevent right-click context menu on canvas
     this.game.canvas.addEventListener('contextmenu', e => e.preventDefault());
+    const dbgBlock = () => this.debugManager && this.debugManager.inputCaptured;
     this.input.keyboard.on('keydown-M', () => {
-      if (this.dialogueActive) return;
+      if (dbgBlock() || this.dialogueActive) return;
       if (this.invOpen) this.toggleInventory(); // close inv first
       this.openGalaxyMap();
     });
-    this.input.keyboard.on('keydown-E', () => { if (!this.dialogueActive) this.tryWarp(); });
-    this.input.keyboard.on('keydown-F', () => { if (!this.dialogueActive) this.tryDockOrLand(); });
-    this.input.keyboard.on('keydown-TAB', (e) => { e.preventDefault(); if (!this.dialogueActive) this.toggleInventory(); });
-    this.input.keyboard.on('keydown-I', () => { if (!this.dialogueActive) this.toggleInventory(); });
+    this.input.keyboard.on('keydown-E', () => { if (dbgBlock() || this.dialogueActive) return; this.tryWarp(); });
+    this.input.keyboard.on('keydown-F', () => { if (dbgBlock() || this.dialogueActive) return; this.tryDockOrLand(); });
+    this.input.keyboard.on('keydown-TAB', (e) => { e.preventDefault(); if (dbgBlock() || this.dialogueActive) return; this.toggleInventory(); });
+    this.input.keyboard.on('keydown-I', () => { if (dbgBlock() || this.dialogueActive) return; this.toggleInventory(); });
 
     // Debug mode (Ctrl+Shift+D)
     this.debugManager = new DebugManager(this);
