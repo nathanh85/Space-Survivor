@@ -1410,12 +1410,7 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   _showBark(text, speaker) {
-    // B27: one-time velocity clear when bark fires — does NOT freeze gameplay
-    if (this.player && this.player.body) {
-      this.player.body.setVelocity(0, 0);
-      this.player.body.setAcceleration(0, 0);
-      this.player.isThrusting = false;
-    }
+    // Barks are purely visual overlays — no gameplay state changes
     this.sound_mgr.playBarkBlip();
     const W = this.cameras.main.width;
 
