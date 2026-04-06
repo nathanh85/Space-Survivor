@@ -122,7 +122,6 @@ export default class FlightScene extends Phaser.Scene {
     // Input
     this.cursors = this.input.keyboard.addKeys({
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
-      space: 'SPACE',
     });
     // Prevent right-click context menu on canvas
     this.game.canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -136,6 +135,20 @@ export default class FlightScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-F', () => { if (dbgBlock() || this.dialogueActive) return; this.tryDockOrLand(); });
     this.input.keyboard.on('keydown-TAB', (e) => { e.preventDefault(); if (dbgBlock() || this.dialogueActive) return; this.toggleInventory(); });
     this.input.keyboard.on('keydown-I', () => { if (dbgBlock() || this.dialogueActive) return; this.toggleInventory(); });
+
+    // Gamepad (twin-stick)
+    this.pad = null;
+    this._aimAngle = 0;
+    this._padALast = false;
+    if (this.input.gamepad) {
+      this.input.gamepad.once('connected', (gp) => {
+        this.pad = gp;
+        console.log('Gamepad connected:', gp.id);
+      });
+      if (this.input.gamepad.total > 0) {
+        this.pad = this.input.gamepad.getPad(0);
+      }
+    }
 
     // Debug mode (Ctrl+Shift+D)
     this.debugManager = new DebugManager(this);
@@ -205,7 +218,7 @@ export default class FlightScene extends Phaser.Scene {
       this.add.text(14, 0, '', { fontSize: '10px', fontFamily: FONT, color: '#e74c3c' }).setScrollFactor(0).setDepth(501),
     ];
 
-    this.controlsText = this.add.text(0, 0, '[SPACE] Thrust  [Mouse] Aim  [Arrows] Move  [M] Map  [E] Warp  [F] Dock  [TAB] Inv', {
+    this.controlsText = this.add.text(0, 0, '[Arrows] Move  [Mouse] Aim+Shoot  [M] Map  [E] Warp  [F] Dock  [TAB] Inv', {
       fontSize: '8px', fontFamily: FONT, color: '#444444',
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(501);
 
@@ -907,15 +920,20 @@ export default class FlightScene extends Phaser.Scene {
   // ========== ENGINE TRAILS ==========
 
   spawnEngineTrail() {
-    const px = this.player.x - Math.cos(this.player.shipAngle) * 14 + (Math.random() - 0.5) * 6;
-    const py = this.player.y - Math.sin(this.player.shipAngle) * 14 + (Math.random() - 0.5) * 6;
-    const size = this.player.isThrusting ? 4 : 2;
+    const vx = this.player.body.velocity.x, vy = this.player.body.velocity.y;
+    const spd = Math.hypot(vx, vy);
+    if (spd < 10) return;
+    const moveAngle = Math.atan2(vy, vx);
+    const px = this.player.x - Math.cos(moveAngle) * 14 + (Math.random() - 0.5) * 6;
+    const py = this.player.y - Math.sin(moveAngle) * 14 + (Math.random() - 0.5) * 6;
+    const moving = this.player.isMoving;
+    const size = moving ? 4 : 2;
     const trail = this.add.rectangle(px, py, size, size,
       Math.random() > 0.5 ? 0x00d4ff : 0x00aaff
-    ).setAlpha(this.player.isThrusting ? 0.9 : 0.5).setDepth(90);
+    ).setAlpha(moving ? 0.9 : 0.5).setDepth(90);
     this.tweens.add({
       targets: trail, alpha: 0, scaleX: 0, scaleY: 0,
-      duration: this.player.isThrusting ? 500 : 300,
+      duration: moving ? 500 : 300,
       onComplete: () => trail.destroy(),
     });
   }
@@ -944,8 +962,54 @@ export default class FlightScene extends Phaser.Scene {
       return;
     }
 
-    // Player
-    this.player.update(this.cursors, this.input.activePointer);
+    // --- TWIN-STICK INPUT ---
+    const DEADZONE = 0.15;
+    let mx = 0, my = 0;
+
+    // Movement: left stick / arrow keys (standard twin-stick)
+    if (this.pad && this.pad.leftStick) {
+      const lx = this.pad.leftStick.x, ly = this.pad.leftStick.y;
+      if (Math.abs(lx) > DEADZONE || Math.abs(ly) > DEADZONE) {
+        mx = lx; my = ly;
+      }
+    }
+    if (this.cursors.left.isDown) mx = -1;
+    if (this.cursors.right.isDown) mx = 1;
+    if (this.cursors.up.isDown) my = -1;
+    if (this.cursors.down.isDown) my = 1;
+
+    // Aim: right stick / mouse (standard twin-stick)
+    let aimAngle = this._aimAngle;
+    let gpAiming = false;
+    if (this.pad && this.pad.rightStick) {
+      const rx = this.pad.rightStick.x, ry = this.pad.rightStick.y;
+      if (Math.abs(rx) > DEADZONE || Math.abs(ry) > DEADZONE) {
+        aimAngle = Math.atan2(ry, rx);
+        gpAiming = true;
+      }
+    }
+    if (!gpAiming) {
+      const wp = this.cameras.main.getWorldPoint(
+        this.input.activePointer.x, this.input.activePointer.y
+      );
+      aimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, wp.x, wp.y);
+    }
+    this._aimAngle = aimAngle;
+
+    // Out-of-fuel speed reduction
+    let speedMult = 1.0;
+    if (this.player.fuel <= 0 && !(this.debugManager && this.debugManager.infiniteFuel)) {
+      speedMult = 0.3;
+    }
+
+    this.player.update(mx * speedMult, my * speedMult, aimAngle);
+
+    // Gamepad A = dock/interact (edge-triggered)
+    const padA = this.pad && this.pad.A;
+    if (padA && !this._padALast && !this.dialogueActive) {
+      this.tryDockOrLand();
+    }
+    this._padALast = !!padA;
 
     // Ship-asteroid collision
     for (const a of this.asteroids) {
@@ -978,7 +1042,7 @@ export default class FlightScene extends Phaser.Scene {
     }
 
     // Engine sound
-    this.sound_mgr.updateEngineHum(this.player.isThrusting);
+    this.sound_mgr.updateEngineHum(this.player.isMoving);
 
     // Track activity for idle barks
     if (this.player.body && (Math.abs(this.player.body.velocity.x) > 20 || Math.abs(this.player.body.velocity.y) > 20)) {
@@ -990,7 +1054,7 @@ export default class FlightScene extends Phaser.Scene {
 
     // Engine trails — more when thrusting
     const speed = this.player.body ? Math.hypot(this.player.body.velocity.x, this.player.body.velocity.y) : 0;
-    if (this.player.isThrusting && speed > 10) {
+    if (this.player.isMoving && speed > 10) {
       this.spawnEngineTrail();
       if (Math.random() < 0.5) this.spawnEngineTrail(); // extra particle when thrusting
     } else if (speed > 40) {
@@ -1073,23 +1137,19 @@ export default class FlightScene extends Phaser.Scene {
       this.sessionTriggers.add('fuel_warned');
       this.fireBark('fuel_below_20');
     }
-    // Out-of-fuel mechanic
+    // Out-of-fuel mechanic (speed reduction via speedMult in twin-stick block above)
     if (this.player.fuel <= 0) {
       if (!this.outOfFuel) {
         this.outOfFuel = true;
         this.outOfFuelTime = Date.now();
-        this.player.body.setMaxVelocity(PLAYER_DEFAULTS.maxSpeed * 0.3);
         this.fireBark('fuel_at_zero');
       }
-      // Extended bark after 10s
       if (Date.now() - this.outOfFuelTime > 10000 && !this.sessionTriggers.has('fuel_zero_ext')) {
         this.sessionTriggers.add('fuel_zero_ext');
         this.fireBark('fuel_zero_extended');
       }
     } else if (this.outOfFuel) {
-      // Fuel restored (e.g., mined some)
       this.outOfFuel = false;
-      this.player.body.setMaxVelocity(PLAYER_DEFAULTS.maxSpeed);
     }
     if (this.player.hull < this.player.maxHull * 0.25 && !this.sessionTriggers.has('hull_warned')) {
       this.sessionTriggers.add('hull_warned');
@@ -1118,9 +1178,9 @@ export default class FlightScene extends Phaser.Scene {
 
         // Dot product: thrust direction vs away-from-star direction
         const awayX = this.player.x - star.x, awayY = this.player.y - star.y;
-        const thrustX = Math.cos(this.player.shipAngle), thrustY = Math.sin(this.player.shipAngle);
-        const dot = awayX * thrustX + awayY * thrustY;
-        const escapingThrust = this.player.isThrusting && dot > 0;
+        const velX = this.player.body.velocity.x, velY = this.player.body.velocity.y;
+        const dot = awayX * velX + awayY * velY;
+        const escapingThrust = this.player.isMoving && dot > 0;
 
         if (!escapingThrust) {
           this.player.body.velocity.x += Math.cos(angle) * pullStrength;
@@ -1747,14 +1807,19 @@ export default class FlightScene extends Phaser.Scene {
     // Weapon always updates (range check) + firing for asteroid mining
     this.weaponSystem.update();
 
-    // Fire weapon on left click or right click (shoot-to-mine + shoot enemies)
+    // Fire weapon — left click / gamepad L1
+    // IMPORTANT: declare pad and ptr locally — they are NOT in scope from update()
+    const pad = this.pad;
     const ptr = this.input.activePointer;
     const canFire = !this.dialogueActive && !this.invOpen && !this.dialogueUI.isOpen;
-    if (canFire && (ptr.leftButtonDown() || ptr.rightButtonDown())) {
-      const proj = this.weaponSystem.fire(time, this.player.x, this.player.y, this.player.shipAngle);
-      if (proj) {
-        this.sound_mgr.playLaser();
-        this.lastActivityTime = Date.now();
+    if (canFire) {
+      const gpFire = pad && pad.L1;
+      if (gpFire || ptr.leftButtonDown()) {
+        const proj = this.weaponSystem.fire(time, this.player.x, this.player.y, this._aimAngle);
+        if (proj) {
+          this.sound_mgr.playLaser();
+          this.lastActivityTime = Date.now();
+        }
       }
     }
 
@@ -2636,13 +2701,13 @@ export default class FlightScene extends Phaser.Scene {
         zion.x + Math.cos(awayAngle) * spawnDist,
         zion.y + Math.sin(awayAngle) * spawnDist
       );
-      this.player.shipAngle = awayAngle; // face away from planet
+      this.player.aimAngle = awayAngle;
     }
     if (this.player.body) {
       this.player.body.setVelocity(0, 0);
       this.player.body.setAcceleration(0, 0);
     }
-    this.player.isThrusting = false;
+    this.player.isMoving = false;
   }
 
   // ========== HUD ==========
@@ -2754,8 +2819,8 @@ export default class FlightScene extends Phaser.Scene {
 
   updateCrosshair(W, H) {
     const g = this.crosshairGfx; g.clear();
-    const cx = W / 2 + Math.cos(this.player.shipAngle) * 40;
-    const cy = H / 2 + Math.sin(this.player.shipAngle) * 40;
+    const cx = W / 2 + Math.cos(this._aimAngle) * 40;
+    const cy = H / 2 + Math.sin(this._aimAngle) * 40;
     g.lineStyle(1, 0x00d4ff, 0.35);
     g.beginPath(); g.moveTo(cx - 7, cy); g.lineTo(cx - 3, cy); g.strokePath();
     g.beginPath(); g.moveTo(cx + 3, cy); g.lineTo(cx + 7, cy); g.strokePath();

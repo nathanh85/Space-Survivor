@@ -103,7 +103,7 @@ export default class TitleScene extends Phaser.Scene {
     }
 
     // Controls hint
-    this.add.text(W / 2, H * 0.78, '[SPACE] Thrust  |  [Click] Shoot/Mine  |  [M] Map  |  [TAB] Inventory', {
+    this.add.text(W / 2, H * 0.78, '[Arrows] Move  |  [Click] Aim+Shoot  |  [M] Map  |  [TAB] Inventory', {
       fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
     }).setOrigin(0.5);
 

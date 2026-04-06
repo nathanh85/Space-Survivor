@@ -315,7 +315,7 @@ export default class DebugManager {
     this._text(PANEL_X + 6, y, `POS: ${Math.floor(p.x)}, ${Math.floor(p.y)}`, DIM);
     y += LINE_H;
     const vel = p.body ? Math.floor(Math.hypot(p.body.velocity.x, p.body.velocity.y)) : 0;
-    this._text(PANEL_X + 6, y, `VEL: ${vel}  ANG: ${(p.shipAngle * 180 / Math.PI).toFixed(0)}°`, DIM);
+    this._text(PANEL_X + 6, y, `VEL: ${vel}  AIM: ${((p.aimAngle || 0) * 180 / Math.PI).toFixed(0)}°`, DIM);
     y += LINE_H + 4;
 
     // Divider

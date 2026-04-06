@@ -112,12 +112,12 @@ export default class DialogueUI {
   }
 
   show(beat, onComplete) {
-    // B27: halt ship — zero velocity+acceleration+thrust on dialogue open
+    // Halt ship on dialogue open
     const scene = this.scene;
     if (scene && scene.player && scene.player.body) {
       scene.player.body.setVelocity(0, 0);
       scene.player.body.setAcceleration(0, 0);
-      scene.player.isThrusting = false;
+      scene.player.isMoving = false;
     }
     this.currentBeat = beat;
     this.currentLineIndex = 0;
