@@ -1,6 +1,6 @@
 // ============================================================
 // Player Entity — twin-stick ship: move + aim independently
-// v0.7.a: No rotation. Drag-based decel. Flip graphics only.
+// v0.7.a2: Ship rotates to face aim/move direction via shipGfx
 // ============================================================
 
 import Phaser from 'phaser';
@@ -24,11 +24,12 @@ export default class Player extends Phaser.GameObjects.Container {
     this.credits = 500;
 
     // Twin-stick state
-    this.aimAngle = 0;     // radians — aim direction (mouse / right stick)
-    this.isMoving = false;  // true when movement input is active
+    this.aimAngle = 0;      // radians — aim direction (mouse / right stick)
+    this.facingAngle = 0;   // radians — direction ship sprite faces
+    this.isMoving = false;
     this._lastGlow = false; // cached — only redraw ship when this changes
 
-    // Ship graphics (child of container — flip THIS, never the container)
+    // Ship graphics (child of container — rotate THIS, never the container)
     this.shipGfx = scene.add.graphics();
     this.add(this.shipGfx);
     this.drawShip(false);
@@ -39,8 +40,8 @@ export default class Player extends Phaser.GameObjects.Container {
     // Physics body
     scene.physics.add.existing(this);
     this.body.setCircle(17, -17, -17);
-    this.body.setDrag(300);           // gentle decel — gravity/knockback persist
-    this.body.setMaxVelocity(300);    // cap so gravity can't accelerate forever
+    this.body.setDrag(300);
+    this.body.setMaxVelocity(300);
     this.body.setCollideWorldBounds(true);
 
     this.setDepth(100);
@@ -68,12 +69,12 @@ export default class Player extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Twin-stick update — scene computes inputs, player applies them.
    * @param {number} moveX  -1..1 horizontal movement
    * @param {number} moveY  -1..1 vertical movement
    * @param {number} aimAngle  radians — aim direction
+   * @param {boolean} isAiming  true when right stick or mouse is actively aiming
    */
-  update(moveX, moveY, aimAngle) {
+  update(moveX, moveY, aimAngle, isAiming) {
     const speed = PLAYER_DEFAULTS.moveSpeed;
 
     if (moveX !== 0 || moveY !== 0) {
@@ -84,20 +85,21 @@ export default class Player extends Phaser.GameObjects.Container {
       this.body.setVelocity(nx * speed * intensity, ny * speed * intensity);
       this.isMoving = true;
     } else {
-      // No input — do NOT zero velocity. Drag handles deceleration.
-      // Star gravity, knockback, and bounces persist between frames.
       this.isMoving = false;
     }
 
-    // Aim angle (ship does NOT rotate — firing direction only)
     this.aimAngle = aimAngle;
 
-    // Horizontal flip — ONLY flip the child graphics, never the container
-    if (moveX < -0.2) {
-      this.shipGfx.setScale(-1, 1);
-    } else if (moveX > 0.2) {
-      this.shipGfx.setScale(1, 1);
+    // Ship facing priority: aim > move > hold last
+    if (isAiming) {
+      this.facingAngle = aimAngle;
+    } else if (moveX !== 0 || moveY !== 0) {
+      this.facingAngle = Math.atan2(moveY, moveX);
     }
+    // Both neutral: facingAngle holds its last value
+
+    // Rotate the GRAPHICS CHILD only — never the Container
+    this.shipGfx.setRotation(this.facingAngle);
 
     // Engine glow — only redraw when glow state changes (NOT every frame)
     const wantGlow = this.isMoving;
@@ -106,7 +108,7 @@ export default class Player extends Phaser.GameObjects.Container {
       this.drawShip(wantGlow);
     }
 
-    // Shield regen (paused during combat damage)
+    // Shield regen
     const scene = this.scene;
     const regenPaused = scene.shieldRegenPaused && Date.now() < scene.shieldRegenPaused;
     if (this.shield < this.maxShield && !regenPaused) {

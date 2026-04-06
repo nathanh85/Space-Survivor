@@ -978,23 +978,26 @@ export default class FlightScene extends Phaser.Scene {
     if (this.cursors.up.isDown) my = -1;
     if (this.cursors.down.isDown) my = 1;
 
-    // Aim: right stick / mouse (standard twin-stick)
+    // Aim: right stick / mouse
     let aimAngle = this._aimAngle;
-    let gpAiming = false;
+    let isAiming = false;
     if (this.pad && this.pad.rightStick) {
       const rx = this.pad.rightStick.x, ry = this.pad.rightStick.y;
       if (Math.abs(rx) > DEADZONE || Math.abs(ry) > DEADZONE) {
         aimAngle = Math.atan2(ry, rx);
-        gpAiming = true;
+        isAiming = true;
       }
     }
-    if (!gpAiming) {
+    if (!isAiming) {
       const wp = this.cameras.main.getWorldPoint(
         this.input.activePointer.x, this.input.activePointer.y
       );
       aimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, wp.x, wp.y);
+      if (this.input.activePointer.isDown) isAiming = true;
     }
     this._aimAngle = aimAngle;
+    this._gpRightStickActive = isAiming && this.pad && this.pad.rightStick &&
+      (Math.abs(this.pad.rightStick.x) > DEADZONE || Math.abs(this.pad.rightStick.y) > DEADZONE);
 
     // Out-of-fuel speed reduction
     let speedMult = 1.0;
@@ -1002,12 +1005,16 @@ export default class FlightScene extends Phaser.Scene {
       speedMult = 0.3;
     }
 
-    this.player.update(mx * speedMult, my * speedMult, aimAngle);
+    this.player.update(mx * speedMult, my * speedMult, aimAngle, isAiming);
 
-    // Gamepad A = dock/interact (edge-triggered)
+    // Gamepad A = dock/interact + advance transmissions (edge-triggered)
     const padA = this.pad && this.pad.A;
-    if (padA && !this._padALast && !this.dialogueActive) {
-      this.tryDockOrLand();
+    if (padA && !this._padALast) {
+      if (this.transContainer && this.transContainer.visible && this.transDismissable) {
+        this.advanceTransmission();
+      } else if (!this.dialogueActive) {
+        this.tryDockOrLand();
+      }
     }
     this._padALast = !!padA;
 
@@ -1807,14 +1814,13 @@ export default class FlightScene extends Phaser.Scene {
     // Weapon always updates (range check) + firing for asteroid mining
     this.weaponSystem.update();
 
-    // Fire weapon — left click / gamepad L1
-    // IMPORTANT: declare pad and ptr locally — they are NOT in scope from update()
-    const pad = this.pad;
+    // Fire weapon — right stick auto-fire (gamepad) / left click (mouse)
+    // IMPORTANT: declare ptr locally — it is NOT in scope from update()
     const ptr = this.input.activePointer;
     const canFire = !this.dialogueActive && !this.invOpen && !this.dialogueUI.isOpen;
     if (canFire) {
-      const gpFire = pad && pad.L1;
-      if (gpFire || ptr.leftButtonDown()) {
+      const gpFiring = !!this._gpRightStickActive;
+      if (gpFiring || ptr.leftButtonDown()) {
         const proj = this.weaponSystem.fire(time, this.player.x, this.player.y, this._aimAngle);
         if (proj) {
           this.sound_mgr.playLaser();

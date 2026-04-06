@@ -121,7 +121,7 @@ export default class CutsceneScene extends Phaser.Scene {
     });
 
     // Advance hint
-    this.advanceHint = this.add.text(W - 16, H - 8, '[SPACE / Click]', {
+    this.advanceHint = this.add.text(W - 16, H - 8, '[SPACE / Click / A]', {
       fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#666666',
     }).setOrigin(1, 1).setVisible(false);
 
@@ -130,6 +130,7 @@ export default class CutsceneScene extends Phaser.Scene {
     this.showLine();
 
     // Input
+    this._padALast = false;
     this.input.keyboard.on('keydown-SPACE', () => this.advance());
     this.input.on('pointerdown', () => this.advance());
   }
@@ -159,6 +160,16 @@ export default class CutsceneScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+    // Gamepad A to advance (edge-triggered)
+    if (this.input.gamepad && this.input.gamepad.total > 0) {
+      const gpad = this.input.gamepad.getPad(0);
+      const padA = gpad && gpad.A;
+      if (padA && !this._padALast) {
+        this.advance();
+      }
+      this._padALast = !!padA;
+    }
+
     if (this.lineComplete) return;
 
     const prevChars = Math.floor(this.displayedChars);

@@ -105,6 +105,7 @@ export default class DialogueUI {
     this.choiceTexts = [];
 
     // Input
+    this._padALast = false;
     scene.input.keyboard.on('keydown-SPACE', () => this.advance());
     scene.input.on('pointerdown', () => {
       if (this.isOpen) this.advance();
@@ -241,6 +242,14 @@ export default class DialogueUI {
 
   update(delta) {
     if (!this.isOpen || !this.currentBeat) return;
+
+    // Gamepad A to advance (edge-triggered)
+    const gpad = this.scene.pad;
+    const padA = gpad && gpad.A;
+    if (padA && !this._padALast) {
+      this.advance();
+    }
+    this._padALast = !!padA;
 
     if (this.displayedChars < this.fullLineText.length) {
       const prevChars = Math.floor(this.displayedChars);

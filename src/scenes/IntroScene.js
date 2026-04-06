@@ -22,8 +22,21 @@ export default class IntroScene extends Phaser.Scene {
     this.skipped = false;
 
     // Skip input
+    this._padALast = false;
     this.input.keyboard.on('keydown-SPACE', () => this.skip());
     this.input.on('pointerdown', () => this.skip());
+    // Gamepad A to skip (polled since IntroScene has no update loop)
+    this.time.addEvent({
+      delay: 100, loop: true,
+      callback: () => {
+        if (this.input.gamepad && this.input.gamepad.total > 0) {
+          const gpad = this.input.gamepad.getPad(0);
+          const padA = gpad && gpad.A;
+          if (padA && !this._padALast) this.skip();
+          this._padALast = !!padA;
+        }
+      },
+    });
 
     // Phase 1: Black pause, then text crawl
     let delay = 1000;
