@@ -1,119 +1,82 @@
 // ============================================================
 // Universe & Solar System Generation
+// v0.7.b: Universe loaded from JSON, interiors still procedural
 // ============================================================
 
 import {
-  RNG, SYS_W, SYS_H, UNIVERSE_COLS, UNIVERSE_ROWS,
-  REGIONS, PLANET_TYPES, SYSTEM_NAMES, DUNGEON_TYPES,
-  STATION_PREFIXES, STATION_SUFFIXES
+  RNG, SYS_W, SYS_H,
+  REGIONS, PLANET_TYPES, DUNGEON_TYPES,
+  STATION_PREFIXES, STATION_SUFFIXES,
+  HEX_NEIGHBORS, REGION_MAP,
 } from '../config/constants.js';
 import { getAvailableResources } from '../data/resources.js';
+import UNIVERSE_DATA from '../data/universe.json';
 
-export function generateUniverse(seed = 42) {
-  const rng = new RNG(seed);
-  const systems = [];
-  const usedNames = new Set();
+// Hash q/r to a deterministic seed
+function hashQR(q, r) {
+  return Math.abs(((q * 73856093) ^ (r * 19349663)) % 999999) + 1;
+}
 
-  for (let row = 0; row < UNIVERSE_ROWS; row++) {
-    for (let col = 0; col < UNIVERSE_COLS; col++) {
-      if (rng.next() > 0.72) continue;
+// Convert axial hex coords to pixel direction (for gate placement)
+function hexDirection(fromQ, fromR, toQ, toR) {
+  const HEX_SZ = 1; // unit scale — we just need the direction
+  const fx = HEX_SZ * (3 / 2 * fromQ);
+  const fy = HEX_SZ * (Math.sqrt(3) / 2 * fromQ + Math.sqrt(3) * fromR);
+  const tx = HEX_SZ * (3 / 2 * toQ);
+  const ty = HEX_SZ * (Math.sqrt(3) / 2 * toQ + Math.sqrt(3) * toR);
+  const dx = tx - fx;
+  const dy = ty - fy;
+  const mag = Math.sqrt(dx * dx + dy * dy) || 1;
+  return { dx: dx / mag, dy: dy / mag };
+}
 
-      let name;
-      if (usedNames.size < SYSTEM_NAMES.length) {
-        do { name = rng.pick(SYSTEM_NAMES); } while (usedNames.has(name));
-      } else {
-        // Fallback: generate unique name with suffix
-        name = rng.pick(SYSTEM_NAMES) + '-' + (usedNames.size + 1);
-      }
-      usedNames.add(name);
+/**
+ * Load the 49-system hex universe from JSON.
+ * Returns an array of system metadata objects (same shape as old generateUniverse).
+ */
+export function loadUniverse() {
+  const systems = UNIVERSE_DATA.map(entry => ({
+    id: `hex_${entry.q}_${entry.r}`,
+    name: entry.name,
+    q: entry.q,
+    r: entry.r,
+    // Keep col/row as aliases for any legacy code
+    col: entry.q,
+    row: entry.r,
+    region: REGION_MAP[entry.region] || REGIONS.CORE,
+    danger: entry.danger,
+    station: entry.station,  // 'hub'|'trading'|'refinery'|'outpost'|'none'
+    act: entry.act || '',
+    beat: entry.beat || '',
+    hasDungeon: entry.danger >= 6,
+    seed: hashQR(entry.q, entry.r),
+    connections: [],
+    isStarting: entry.name === 'Zion',
+    hasTradingPost: entry.station === 'trading' || entry.station === 'hub',
+  }));
 
-      const dist = Math.sqrt((col - UNIVERSE_COLS / 2) ** 2 + (row - UNIVERSE_ROWS / 2) ** 2);
-      let region;
-      if (dist < 2.5)      region = REGIONS.CORE;
-      else if (dist < 4.5) region = REGIONS.FRONT;
-      else if (dist < 6)   region = REGIONS.OUTER;
-      else                  region = REGIONS.RIFT;
-
-      const danger = rng.int(region.danger[0], region.danger[1]);
-
-      systems.push({
-        id: `sys_${col}_${row}`,
-        name,
-        col, row,
-        region,
-        danger,
-        hasDungeon: danger >= 6 && rng.chance(0.5),
-        seed: rng.int(1, 999999),
-        connections: [],
-      });
-    }
-  }
-
+  // Build connections via hex adjacency
   for (const sys of systems) {
     for (const other of systems) {
       if (sys === other) continue;
-      const dc = Math.abs(sys.col - other.col);
-      const dr = Math.abs(sys.row - other.row);
-      if (dc <= 1 && dr <= 1) {
-        sys.connections.push(other.id);
-      }
+      const isAdj = HEX_NEIGHBORS.some(
+        n => other.q === sys.q + n.dq && other.r === sys.r + n.dr
+      );
+      if (isAdj) sys.connections.push(other.id);
     }
-  }
-
-  // Mark the first CORE system (closest to grid center) as the starting system
-  const coreSystems = systems.filter(s => s.region.key === 'CORE');
-  if (coreSystems.length > 0) {
-    const cx = UNIVERSE_COLS / 2, cy = UNIVERSE_ROWS / 2;
-    coreSystems.sort((a, b) =>
-      Math.hypot(a.col - cx, a.row - cy) - Math.hypot(b.col - cx, b.row - cy)
-    );
-    coreSystems[0].isStarting = true;
-  } else if (systems.length > 0) {
-    systems[0].isStarting = true;
-  }
-
-  // B21: Guarantee at least one FRONT system is reachable within 2 jumps of starter.
-  // Grid-adjacency alone can leave the starter surrounded by CORE systems if RNG drops
-  // the border cells. If no FRONT system is within 2 hops, force-connect the nearest one.
-  const startSys = systems.find(s => s.isStarting);
-  if (startSys) {
-    const within2 = new Set([startSys.id]);
-    for (const id1 of startSys.connections) {
-      within2.add(id1);
-      const hop1 = systems.find(s => s.id === id1);
-      if (hop1) for (const id2 of hop1.connections) within2.add(id2);
-    }
-    const hasFrontier = systems.some(s => within2.has(s.id) && s.region.key === 'FRONT');
-    if (!hasFrontier) {
-      const frontSystems = systems.filter(s => s.region.key === 'FRONT');
-      if (frontSystems.length > 0) {
-        frontSystems.sort((a, b) =>
-          Math.hypot(a.col - startSys.col, a.row - startSys.row) -
-          Math.hypot(b.col - startSys.col, b.row - startSys.row)
-        );
-        const target = frontSystems[0];
-        if (!startSys.connections.includes(target.id)) startSys.connections.push(target.id);
-        if (!target.connections.includes(startSys.id)) target.connections.push(startSys.id);
-      }
-    }
-  }
-
-  // B23/FIX1: Guarantee at least one trading post per region so fuel is always purchasable.
-  // Mark one system per region as hasTradingPost=true; generateSystem() will honour this flag.
-  for (const regionKey of ['CORE', 'FRONT', 'OUTER', 'RIFT']) {
-    const regionSystems = systems.filter(s => s.region.key === regionKey && !s.isStarting);
-    if (regionSystems.length === 0) continue;
-    // Pick the system closest to the center of its region to be the guaranteed trade hub
-    const cx = UNIVERSE_COLS / 2, cy = UNIVERSE_ROWS / 2;
-    regionSystems.sort((a, b) =>
-      Math.hypot(a.col - cx, a.row - cy) - Math.hypot(b.col - cx, b.row - cy)
-    );
-    regionSystems[0].hasTradingPost = true;
   }
 
   return systems;
 }
 
+// Keep old name as alias for any import that uses it
+export const generateUniverse = loadUniverse;
+
+/**
+ * Generate the interior of a system (star, planets, asteroids, stations, gates).
+ * System identity (name, region, danger, station) comes from JSON metadata.
+ * Interior layout is procedural from a deterministic seed.
+ */
 export function generateSystem(sysData, universeData) {
   const rng = new RNG(sysData.seed);
   const cx = SYS_W / 2;
@@ -148,7 +111,7 @@ export function generateSystem(sysData, universeData) {
     });
   }
 
-  // Asteroids — density scales by region, typed for visual + drop variety
+  // Asteroids — density scales by region
   const ASTEROID_TYPES = {
     iron:   { colors: ['#8B4513', '#A0522D', '#CD853F'], drops: { iron: 0.70, carbon: 0.20, nothing: 0.10 } },
     carbon: { colors: ['#2F2F2F', '#3D3D3D', '#1A1A1A'], drops: { carbon: 0.70, iron: 0.20, nothing: 0.10 } },
@@ -181,7 +144,6 @@ export function generateSystem(sysData, universeData) {
     return 'iron';
   }
 
-  // B26: doubled counts and spread to fill the system
   const maxByRegion = { CORE: 50, FRONT: 70, OUTER: 90, RIFT: 110 };
   const maxAsteroids = maxByRegion[sysData.region.key] || 70;
   const targetAsteroids = rng.int(Math.floor(maxAsteroids / 2), maxAsteroids);
@@ -197,10 +159,8 @@ export function generateSystem(sysData, universeData) {
     const typeData = ASTEROID_TYPES[aType];
     const resId = pickDrop(rng, typeData.drops) || 'iron';
     system.asteroids.push({
-      x: ax, y: ay,
-      size: aSize,
-      hp: aSize * 3,
-      maxHp: aSize * 3,
+      x: ax, y: ay, size: aSize,
+      hp: aSize * 3, maxHp: aSize * 3,
       asteroidType: aType,
       color: rng.pick(typeData.colors),
       rotation: rng.float(0, Math.PI * 2),
@@ -211,11 +171,11 @@ export function generateSystem(sysData, universeData) {
     });
   }
 
-  // Stations — typed: trading_post, outpost, refinery
-  const STATION_TYPES = ['trading_post', 'outpost', 'refinery'];
+  // --- STATIONS from JSON station field ---
+  const stationType = sysData.station || 'none';
 
-  // Hub/starting system: always add a trading post
-  if (sysData.isStarting) {
+  if (stationType === 'hub' && sysData.isStarting) {
+    // Zion starting hub — Grix Trading Co.
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(500, 800);
     system.stations.push({
@@ -225,59 +185,55 @@ export function generateSystem(sysData, universeData) {
       size: 16,
       stationType: 'trading_post',
     });
-  }
-
-  // B23/FIX1: Region-guaranteed trading post (hasTradingPost flag set by generateUniverse)
-  if (!sysData.isStarting && sysData.hasTradingPost) {
+  } else if (stationType === 'hub') {
+    // Non-Zion hub (Ashfall) — hub station with distinct type
+    const angle = rng.float(0, Math.PI * 2);
+    const dist = rng.int(500, 800);
+    system.stations.push({
+      x: system.star.x + Math.cos(angle) * dist,
+      y: system.star.y + Math.sin(angle) * dist,
+      name: sysData.name + ' Hub',
+      size: 16,
+      stationType: 'hub',
+    });
+  } else if (stationType === 'trading') {
+    const angle = rng.float(0, Math.PI * 2);
+    const dist = rng.int(450, 800);
+    // Use system name for the trading post for flavor
+    const tpName = sysData.name === 'Grix Station' ? 'Grix Trading Co.'
+      : rng.pick(STATION_PREFIXES) + ' ' + rng.pick(STATION_SUFFIXES);
+    system.stations.push({
+      x: system.star.x + Math.cos(angle) * dist,
+      y: system.star.y + Math.sin(angle) * dist,
+      name: tpName,
+      size: 16,
+      stationType: 'trading_post',
+    });
+  } else if (stationType === 'refinery') {
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(450, 800);
     system.stations.push({
       x: system.star.x + Math.cos(angle) * dist,
       y: system.star.y + Math.sin(angle) * dist,
-      name: rng.pick(STATION_PREFIXES) + ' ' + rng.pick(STATION_SUFFIXES),
+      name: 'Refinery ' + rng.pick(STATION_SUFFIXES),
       size: 16,
-      stationType: 'trading_post',
+      stationType: 'refinery',
     });
-  }
-
-  // Core Worlds: 30% chance of an extra trading post
-  const addTradingPost = !sysData.isStarting && !sysData.hasTradingPost && sysData.region.key === 'CORE' && rng.chance(0.3);
-  if (addTradingPost) {
+  } else if (stationType === 'outpost') {
     const angle = rng.float(0, Math.PI * 2);
-    const dist = rng.int(450, 850);
+    const dist = rng.int(450, 800);
     system.stations.push({
       x: system.star.x + Math.cos(angle) * dist,
       y: system.star.y + Math.sin(angle) * dist,
-      name: rng.pick(STATION_PREFIXES) + ' ' + rng.pick(STATION_SUFFIXES),
+      name: 'Outpost ' + rng.pick(STATION_SUFFIXES),
       size: 16,
-      stationType: 'trading_post',
+      stationType: 'outpost',
     });
   }
+  // stationType === 'none' → no station
 
-  // B39: Station names must match their type to avoid misleading labels
-  const STATION_NAME_BY_TYPE = {
-    trading_post: ['Trading Post', 'Depot', 'Hub'],
-    outpost: ['Outpost', 'Beacon', 'Hub'],
-    refinery: ['Refinery', 'Depot'],
-  };
-  const numStations = rng.int(0, 2);
-  for (let i = 0; i < numStations; i++) {
-    const angle = rng.float(0, Math.PI * 2);
-    const dist = rng.int(400, 900);
-    const sType = rng.pick(STATION_TYPES);
-    const prefix = rng.pick(STATION_NAME_BY_TYPE[sType] || STATION_PREFIXES);
-    system.stations.push({
-      x: system.star.x + Math.cos(angle) * dist,
-      y: system.star.y + Math.sin(angle) * dist,
-      name: prefix + ' ' + rng.pick(STATION_SUFFIXES),
-      size: 16,
-      stationType: sType,
-    });
-  }
-
-  // B23/FIX1: Non-trading-post systems always have at least 4 ice asteroids so the
-  // player can mine fuel even if no shop is present.
-  if (!sysData.isStarting && !sysData.hasTradingPost) {
+  // Guarantee ice asteroids in systems without trading
+  if (stationType !== 'trading' && stationType !== 'hub') {
     const iceType = ASTEROID_TYPES.ice;
     let iceCount = 0;
     for (const a of system.asteroids) { if (a.asteroidType === 'ice') iceCount++; }
@@ -288,10 +244,8 @@ export function generateSystem(sysData, universeData) {
       const ay = system.star.y + Math.sin(angle) * dist + rng.int(-50, 50);
       const aSize = rng.int(12, 22);
       system.asteroids.push({
-        x: ax, y: ay,
-        size: aSize,
-        hp: aSize * 3,
-        maxHp: aSize * 3,
+        x: ax, y: ay, size: aSize,
+        hp: aSize * 3, maxHp: aSize * 3,
         asteroidType: 'ice',
         color: rng.pick(iceType.colors),
         rotation: rng.float(0, Math.PI * 2),
@@ -304,15 +258,13 @@ export function generateSystem(sysData, universeData) {
     }
   }
 
-  // Warp gates
+  // Warp gates — hex-direction based positioning
   for (const connId of sysData.connections) {
     const other = universeData.find(s => s.id === connId);
     if (!other) continue;
-    const dx = other.col - sysData.col;
-    const dy = other.row - sysData.row;
-    const mag = Math.sqrt(dx * dx + dy * dy) || 1;
-    const gateX = cx + (dx / mag) * (SYS_W / 2 - 200) + rng.int(-40, 40);
-    const gateY = cy + (dy / mag) * (SYS_H / 2 - 200) + rng.int(-40, 40);
+    const dir = hexDirection(sysData.q, sysData.r, other.q, other.r);
+    const gateX = cx + dir.dx * (SYS_W / 2 - 200) + rng.int(-40, 40);
+    const gateY = cy + dir.dy * (SYS_H / 2 - 200) + rng.int(-40, 40);
     system.gates.push({
       x: gateX, y: gateY,
       targetId: connId,

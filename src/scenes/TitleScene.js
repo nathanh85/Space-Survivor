@@ -47,7 +47,9 @@ export default class TitleScene extends Phaser.Scene {
       }
     });
 
-    const hasSave = SaveManager.hasSave();
+    // Check save compatibility — old saves (pre v0.7.b) are incompatible with hex universe
+    const saveVersion = SaveManager.getSaveVersion();
+    const hasSave = SaveManager.hasSave() && saveVersion && saveVersion >= 'v0.7.b';
 
     // Background stars
     const gfx = this.add.graphics();

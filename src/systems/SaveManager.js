@@ -35,6 +35,15 @@ const SaveManager = {
     localStorage.removeItem(SAVE_KEY);
   },
 
+  clear() {
+    localStorage.removeItem(SAVE_KEY);
+  },
+
+  getSaveVersion() {
+    const save = this.load();
+    return save ? save.version : null;
+  },
+
   exportSave() {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return;

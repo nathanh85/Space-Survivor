@@ -18,8 +18,27 @@ export class RNG {
 // --- WORLD DIMENSIONS ---
 export const SYS_W = 4800;
 export const SYS_H = 3600;
+// Legacy grid constants kept for any remaining references (galaxy is now hex-based)
 export const UNIVERSE_COLS = 12;
 export const UNIVERSE_ROWS = 10;
+
+// --- HEX ADJACENCY (axial coordinates) ---
+export const HEX_NEIGHBORS = [
+  { dq: +1, dr: 0 },
+  { dq: -1, dr: 0 },
+  { dq: 0, dr: +1 },
+  { dq: 0, dr: -1 },
+  { dq: +1, dr: -1 },
+  { dq: -1, dr: +1 },
+];
+
+// --- REGION MAP (JSON string → REGIONS object) ---
+export const REGION_MAP = {
+  core: null,     // set after REGIONS is defined
+  frontier: null,
+  outer: null,
+  rift: null,
+};
 
 // --- REGIONS ---
 export const REGIONS = {
@@ -28,6 +47,12 @@ export const REGIONS = {
   OUTER: { key: 'OUTER', name: 'Outer Rim',   color: '#e74c3c', danger: [6, 8],  minLevel: 10 },
   RIFT:  { key: 'RIFT',  name: 'The Rift',    color: '#8e44ad', danger: [9, 10], minLevel: 20 },
 };
+
+// Wire REGION_MAP after REGIONS is defined
+REGION_MAP.core = REGIONS.CORE;
+REGION_MAP.frontier = REGIONS.FRONT;
+REGION_MAP.outer = REGIONS.OUTER;
+REGION_MAP.rift = REGIONS.RIFT;
 
 // --- PLANET TYPES ---
 export const PLANET_TYPES = [
@@ -81,7 +106,7 @@ export const PLAYER_DEFAULTS = {
 // --- FONT ---
 export const FONT = '"Press Start 2P", monospace';
 
-export const BUILD_VERSION = 'v0.7.a2';
+export const BUILD_VERSION = 'v0.7.b';
 export const BUILD_DATE = '2026-04-05';
 
 // --- COLORS ---
