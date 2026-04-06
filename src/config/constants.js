@@ -70,7 +70,12 @@ export const DANGER_COLORS = [
 
 // --- PLAYER DEFAULTS ---
 export const PLAYER_DEFAULTS = {
-  moveSpeed: 250,   // twin-stick direct velocity px/s
+  thrust: 250,      // forward acceleration px/s² (was 200, +25%)
+  reverse: 125,     // backward acceleration px/s² (was 100, +25%)
+  strafe: 120,      // side acceleration px/s²
+  maxSpeed: 300,    // velocity cap px/s
+  drag: 210,        // Arcade physics drag value — ship stops within ~1 second
+  turnSmooth: 0.12,
   hull: 100,
   shield: 50,
   fuel: 100,
@@ -81,8 +86,8 @@ export const PLAYER_DEFAULTS = {
 // --- FONT ---
 export const FONT = '"Press Start 2P", monospace';
 
-export const BUILD_VERSION = 'v0.7.a';
-export const BUILD_DATE = '2026-04-05';
+export const BUILD_VERSION = 'v0.6.7';
+export const BUILD_DATE = '2026-04-04';
 
 // --- COLORS ---
 export const COLORS = {

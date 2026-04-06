@@ -21,9 +21,6 @@ const config = {
     pixelArt: true,
     antialias: false,
   },
-  input: {
-    gamepad: true,
-  },
   physics: {
     default: 'arcade',
     arcade: { debug: false },
