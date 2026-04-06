@@ -1,5 +1,6 @@
 // ============================================================
-// Player Entity — ship graphics, physics, controls
+// Player Entity — twin-stick ship: move + aim independently
+// v0.7.a: No rotation. Drag-based decel. Flip graphics only.
 // ============================================================
 
 import Phaser from 'phaser';
@@ -22,24 +23,24 @@ export default class Player extends Phaser.GameObjects.Container {
     this.level = 1;
     this.credits = 500;
 
-    // Physics tuning
-    this.turnSmooth = PLAYER_DEFAULTS.turnSmooth;
-    this.shipAngle = 0;
-    this.isThrusting = false;
+    // Twin-stick state
+    this.aimAngle = 0;     // radians — aim direction (mouse / left stick)
+    this.isMoving = false;  // true when movement input is active
+    this._lastGlow = false; // cached glow state — only redraw ship when this changes
 
-    // Ship graphics
+    // Ship graphics (child of container — flip THIS, never the container)
     this.shipGfx = scene.add.graphics();
     this.add(this.shipGfx);
     this.drawShip(false);
 
-    // Scale ship up 20%
+    // Scale container — ALWAYS positive, NEVER set negative scale on container
     this.setScale(1.5);
 
-    // Physics body (scaled to match visual size)
+    // Physics body
     scene.physics.add.existing(this);
     this.body.setCircle(17, -17, -17);
-    this.body.setMaxVelocity(PLAYER_DEFAULTS.maxSpeed);
-    this.body.setDrag(PLAYER_DEFAULTS.drag);
+    this.body.setDrag(300);           // gentle decel — gravity/knockback persist
+    this.body.setMaxVelocity(300);    // cap so gravity can't accelerate forever
     this.body.setCollideWorldBounds(true);
 
     this.setDepth(100);
@@ -66,45 +67,51 @@ export default class Player extends Phaser.GameObjects.Container {
     g.fillStyle(0x00aaff); g.fillRect(4, -2, 4, 4);         // Cockpit
   }
 
-  update(cursors, pointer) {
-    // Aim toward mouse
-    const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const target = Phaser.Math.Angle.Between(this.x, this.y, wp.x, wp.y);
-    let diff = target - this.shipAngle;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    this.shipAngle += diff * this.turnSmooth;
-    this.setRotation(this.shipAngle);
+  /**
+   * Twin-stick update — scene computes inputs, player applies them.
+   * @param {number} moveX  -1..1 horizontal movement
+   * @param {number} moveY  -1..1 vertical movement
+   * @param {number} aimAngle  radians — aim direction
+   */
+  update(moveX, moveY, aimAngle) {
+    const speed = PLAYER_DEFAULTS.moveSpeed;
 
-    // Thrust-based movement relative to ship facing
-    const cos = Math.cos(this.shipAngle);
-    const sin = Math.sin(this.shipAngle);
-    let forward = 0, strafe = 0;
-
-    if (cursors.up.isDown || (cursors.space && cursors.space.isDown)) forward = PLAYER_DEFAULTS.thrust;
-    if (cursors.down.isDown) forward = -PLAYER_DEFAULTS.reverse;
-    if (cursors.left.isDown) strafe = -PLAYER_DEFAULTS.strafe;
-    if (cursors.right.isDown) strafe = PLAYER_DEFAULTS.strafe;
-
-    this.isThrusting = forward > 0;
-    const hasInput = forward !== 0 || strafe !== 0;
-
-    if (hasInput) {
-      // Forward: (cos, sin), Right: (-sin, cos) in screen coords
-      const ax = forward * cos + strafe * (-sin);
-      const ay = forward * sin + strafe * cos;
-      this.body.setAcceleration(ax, ay);
-      this.drawShip(this.isThrusting);
+    if (moveX !== 0 || moveY !== 0) {
+      // Active input — set velocity directly
+      const mag = Math.hypot(moveX, moveY);
+      const intensity = Math.min(mag, 1.0);
+      const nx = moveX / mag;
+      const ny = moveY / mag;
+      this.body.setVelocity(nx * speed * intensity, ny * speed * intensity);
+      this.isMoving = true;
     } else {
-      this.body.setAcceleration(0, 0);
-      this.drawShip(false);
+      // No input — do NOT zero velocity. Drag handles deceleration.
+      // Star gravity, knockback, and bounces persist between frames.
+      this.isMoving = false;
     }
 
-    // Shield regen (paused during combat damage via shieldRegenPaused)
+    // Aim angle (ship does NOT rotate — firing direction only)
+    this.aimAngle = aimAngle;
+
+    // Horizontal flip — ONLY flip the child graphics, never the container
+    if (moveX < -0.2) {
+      this.shipGfx.setScale(-1, 1);
+    } else if (moveX > 0.2) {
+      this.shipGfx.setScale(1, 1);
+    }
+
+    // Engine glow — only redraw when glow state changes (NOT every frame)
+    const wantGlow = this.isMoving;
+    if (wantGlow !== this._lastGlow) {
+      this._lastGlow = wantGlow;
+      this.drawShip(wantGlow);
+    }
+
+    // Shield regen (paused during combat damage)
     const scene = this.scene;
     const regenPaused = scene.shieldRegenPaused && Date.now() < scene.shieldRegenPaused;
     if (this.shield < this.maxShield && !regenPaused) {
-      this.shield = Math.min(this.maxShield, this.shield + 0.008); // half speed regen
+      this.shield = Math.min(this.maxShield, this.shield + 0.008);
     }
   }
 }
