@@ -72,7 +72,7 @@ export default class GalaxyMapScene extends Phaser.Scene {
     this.startingSystemId = data.startingSystemId || null;
     this.clearedSystems = data.clearedSystems || [];
     this.questManager = data.questManager || null;
-    this.portalLocks = data.portalLocks || {};
+    this.checkWarpLock = data.checkWarpLock || (() => null);
   }
 
   create() {
@@ -225,9 +225,7 @@ export default class GalaxyMapScene extends Phaser.Scene {
   }
 
   isLocked(fromId, toId) {
-    const key = portalKey(fromId, toId);
-    const lock = this.portalLocks[key];
-    return lock && lock.locked;
+    return !!this.checkWarpLock(fromId, toId);
   }
 
   handleClick(mx, my) {
@@ -248,10 +246,11 @@ export default class GalaxyMapScene extends Phaser.Scene {
       }
     }
 
-    // Portal lock check
-    if (this.isLocked(cur.id, clicked.id)) {
+    // Portal lock check — pass lock object (has bark text)
+    const lock = this.checkWarpLock(cur.id, clicked.id);
+    if (lock) {
       this.scene.stop('GalaxyMapScene');
-      if (this.onWarp) this.onWarp(null, 'locked');
+      if (this.onWarp) this.onWarp(null, lock);
       return;
     }
 

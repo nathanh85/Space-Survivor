@@ -11,6 +11,9 @@ import {
 } from '../config/constants.js';
 import { getAvailableResources } from '../data/resources.js';
 import UNIVERSE_DATA from '../data/universe.json';
+import { ASTEROID_CONFIGS } from '../data/entities/asteroids.js';
+import { STAR_CONFIGS } from '../data/entities/stars.js';
+import { getZoneConfig } from '../data/zones/index.js';
 
 // Hash q/r to a deterministic seed
 function hashQR(q, r) {
@@ -77,18 +80,43 @@ export const generateUniverse = loadUniverse;
  * System identity (name, region, danger, station) comes from JSON metadata.
  * Interior layout is procedural from a deterministic seed.
  */
+// Roll one resource from an entity config drop table
+function rollDrop(rng, drops) {
+  const roll = rng.float(0, 1);
+  let acc = 0;
+  for (const drop of drops) {
+    acc += drop.chance;
+    if (roll < acc) return drop.id;
+  }
+  return drops.length > 0 ? drops[0].id : 'iron';
+}
+
 export function generateSystem(sysData, universeData) {
   const rng = new RNG(sysData.seed);
   const cx = SYS_W / 2;
   const cy = SYS_H / 2;
 
+  // Zone config (template + override merge)
+  const zoneConfig = getZoneConfig(sysData.id);
+
+  // Star — from zone config star type
+  const starType = zoneConfig.star ? STAR_CONFIGS[zoneConfig.star.type] : null;
+  const starRadius = starType
+    ? rng.int(starType.radius.min, starType.radius.max)
+    : rng.int(50, 80);
+  const starColor = starType
+    ? rng.pick(starType.colors)
+    : rng.pick(['#FFD700', '#FFA500', '#FF6347', '#87CEEB', '#FFFFFF']);
+
   const system = {
     data: sysData,
+    zoneConfig: zoneConfig,
     star: {
       x: cx + rng.int(-100, 100),
       y: cy + rng.int(-100, 100),
-      radius: rng.int(50, 80),
-      color: rng.pick(['#FFD700', '#FFA500', '#FF6347', '#87CEEB', '#FFFFFF']),
+      radius: starRadius,
+      color: starColor,
+      configId: zoneConfig.star ? zoneConfig.star.type : 'yellow_dwarf',
     },
     planets: [],
     asteroids: [],
@@ -111,62 +139,40 @@ export function generateSystem(sysData, universeData) {
     });
   }
 
-  // Asteroids — density scales by region
-  const ASTEROID_TYPES = {
-    iron:   { colors: ['#8B4513', '#A0522D', '#CD853F'], drops: { iron: 0.70, carbon: 0.20, nothing: 0.10 } },
-    carbon: { colors: ['#2F2F2F', '#3D3D3D', '#1A1A1A'], drops: { carbon: 0.70, iron: 0.20, nothing: 0.10 } },
-    ice:    { colors: ['#87CEEB', '#B0E0E6', '#ADD8E6'], drops: { fuel: 0.60, cryo: 0.20, nothing: 0.20 } },
-    common: { colors: ['#8B7355', '#A0A0A0', '#6B6B6B'], drops: { iron: 0.30, carbon: 0.30, fuel: 0.20, nothing: 0.20 } },
-  };
-  const typeWeights = {
-    CORE:  { common: 50, iron: 35, carbon: 10, ice: 5 },
-    FRONT: { common: 25, iron: 25, carbon: 25, ice: 25 },
-    OUTER: { common: 20, iron: 25, carbon: 25, ice: 30 },
-    RIFT:  { common: 15, iron: 25, carbon: 30, ice: 30 },
-  };
-  const weights = typeWeights[sysData.region.key] || typeWeights.CORE;
-  function pickAsteroidType(rng) {
-    const roll = rng.int(0, 99);
-    let acc = 0;
-    for (const [type, weight] of Object.entries(weights)) {
-      acc += weight;
-      if (roll < acc) return type;
-    }
-    return 'common';
-  }
-  function pickDrop(rng, drops) {
-    const roll = rng.float(0, 1);
-    let acc = 0;
-    for (const [res, chance] of Object.entries(drops)) {
-      acc += chance;
-      if (roll < acc) return res === 'nothing' ? null : res;
-    }
-    return 'iron';
-  }
+  // Asteroids — from zone config pool + entity configs
+  const asteroidPool = zoneConfig.asteroids ? zoneConfig.asteroids.pool : ['common_t1'];
+  const astCount = zoneConfig.asteroids
+    ? rng.int(zoneConfig.asteroids.count.min, zoneConfig.asteroids.count.max)
+    : rng.int(30, 50);
 
-  const maxByRegion = { CORE: 50, FRONT: 70, OUTER: 90, RIFT: 110 };
-  const maxAsteroids = maxByRegion[sysData.region.key] || 70;
-  const targetAsteroids = rng.int(Math.floor(maxAsteroids / 2), maxAsteroids);
-  for (let i = 0; i < targetAsteroids; i++) {
+  for (let i = 0; i < astCount; i++) {
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(400, 2200);
     const ax = system.star.x + Math.cos(angle) * dist + rng.int(-60, 60);
     const ay = system.star.y + Math.sin(angle) * dist + rng.int(-60, 60);
     const tooClose = system.asteroids.some(e => Math.hypot(ax - e.x, ay - e.y) < 40);
     if (tooClose) continue;
-    const aSize = rng.int(10, 23);
-    const aType = pickAsteroidType(rng);
-    const typeData = ASTEROID_TYPES[aType];
-    const resId = pickDrop(rng, typeData.drops) || 'iron';
+
+    // Pick from zone pool, look up entity config
+    const configId = rng.pick(asteroidPool);
+    const astConfig = ASTEROID_CONFIGS[configId];
+    if (!astConfig) continue;
+
+    const aSize = rng.int(astConfig.size.min, astConfig.size.max);
+    const hp = rng.int(astConfig.hp.min, astConfig.hp.max);
+    const resourceId = rollDrop(rng, astConfig.drops);
+
     system.asteroids.push({
       x: ax, y: ay, size: aSize,
-      hp: aSize * 3, maxHp: aSize * 3,
-      asteroidType: aType,
-      color: rng.pick(typeData.colors),
+      hp: hp, maxHp: hp,
+      configId: configId,
+      asteroidType: astConfig.type,
+      color: '#' + astConfig.tint.toString(16).padStart(6, '0'),
       rotation: rng.float(0, Math.PI * 2),
       rotSpeed: rng.float(-0.015, 0.015),
       shapeSeed: rng.int(1, 999999),
-      resourceId: resId,
+      resourceId: resourceId,
+      sounds: astConfig.sounds,
       mined: false,
     });
   }
@@ -232,9 +238,9 @@ export function generateSystem(sysData, universeData) {
   }
   // stationType === 'none' → no station
 
-  // Guarantee ice asteroids in systems without trading
+  // Guarantee ice asteroids in systems without trading (fuel backup)
   if (stationType !== 'trading' && stationType !== 'hub') {
-    const iceType = ASTEROID_TYPES.ice;
+    const iceConfig = ASTEROID_CONFIGS.ice_t1;
     let iceCount = 0;
     for (const a of system.asteroids) { if (a.asteroidType === 'ice') iceCount++; }
     while (iceCount < 4) {
@@ -242,16 +248,19 @@ export function generateSystem(sysData, universeData) {
       const dist = rng.int(350, 1100);
       const ax = system.star.x + Math.cos(angle) * dist + rng.int(-50, 50);
       const ay = system.star.y + Math.sin(angle) * dist + rng.int(-50, 50);
-      const aSize = rng.int(12, 22);
+      const aSize = rng.int(iceConfig.size.min, iceConfig.size.max);
+      const hp = rng.int(iceConfig.hp.min, iceConfig.hp.max);
       system.asteroids.push({
         x: ax, y: ay, size: aSize,
-        hp: aSize * 3, maxHp: aSize * 3,
+        hp: hp, maxHp: hp,
+        configId: 'ice_t1',
         asteroidType: 'ice',
-        color: rng.pick(iceType.colors),
+        color: '#' + iceConfig.tint.toString(16).padStart(6, '0'),
         rotation: rng.float(0, Math.PI * 2),
         rotSpeed: rng.float(-0.015, 0.015),
         shapeSeed: rng.int(1, 999999),
-        resourceId: pickDrop(rng, iceType.drops) || 'fuel',
+        resourceId: rollDrop(rng, iceConfig.drops),
+        sounds: iceConfig.sounds,
         mined: false,
       });
       iceCount++;

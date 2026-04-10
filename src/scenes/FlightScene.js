@@ -5,6 +5,7 @@
 import Phaser from 'phaser';
 import { SYS_W, SYS_H, UNIVERSE_COLS, UNIVERSE_ROWS, DANGER_COLORS, BUILD_VERSION, BUILD_DATE, FONT, PLAYER_DEFAULTS, HEX_NEIGHBORS } from '../config/constants.js';
 import { loadUniverse, generateSystem } from '../systems/UniverseGenerator.js';
+import { checkWarpLock } from '../data/zones/portalLocks.js';
 import Player from '../entities/Player.js';
 import InventorySystem from '../systems/InventorySystem.js';
 import { RESOURCES, getAvailableResources } from '../data/resources.js';
@@ -56,8 +57,7 @@ export default class FlightScene extends Phaser.Scene {
     this.fog = new Set();  // Set of system IDs (hex-based, not grid cells)
     this.visited = new Set();
 
-    // Portal locks — connections that require unlock conditions
-    this.portalLocks = this._buildPortalLocks();
+    // Portal locks — managed by portalLocks.js
     this.nearGate = null;
     this.nearStation = null;
     this.nearPlanetZion = false;
@@ -439,6 +439,11 @@ export default class FlightScene extends Phaser.Scene {
     this.visited.add(sysId);
     this.revealFog(sysId);
 
+    // Background music based on zone config
+    if (this.currentSystem.zoneConfig && this.currentSystem.zoneConfig.music) {
+      this.sound_mgr.setMusic(this.currentSystem.zoneConfig.music);
+    }
+
     // Quest progress: visit_system
     if (isFirstVisit && this.questManager) {
       const visitReady = this.questManager.updateProgress('visit_system', {});
@@ -532,53 +537,17 @@ export default class FlightScene extends Phaser.Scene {
     }
   }
 
-  // ========== PORTAL LOCKS ==========
+  // ========== PORTAL LOCKS (via portalLocks.js) ==========
 
-  _buildPortalLocks() {
-    // Helper: sorted key from two system IDs
-    const pk = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
-    // Find system IDs by name
-    const byName = (name) => {
-      const s = this.universe.find(x => x.name === name);
-      return s ? s.id : null;
-    };
-    const locks = {};
-    const addLock = (nameA, nameB, type, label) => {
-      const idA = byName(nameA), idB = byName(nameB);
-      if (idA && idB) locks[pk(idA, idB)] = { locked: true, type, label };
-    };
-
-    // Functional locks (2)
-    addLock('Checkpoint', 'Ambush Run', 'quest', 'Complete 3 quests');
-    addLock("Harlan's Reach", 'Ashfall', 'boss', 'Beat Deputy Harlan');
-
-    // Placeholder locks (always locked for now — unlock triggers TBD)
-    addLock('Borderwatch', 'Waypoint', 'act', 'Act 1→2 transition');
-    addLock('Ironvale', 'Cinder', 'story', 'Mid-Act 2 trigger');
-    addLock('The Maw', 'Singularity', 'boss', 'One-way lock');
-    addLock('Singularity', 'Waypoint', 'boss', 'Beat Act 2 boss');
-    addLock('Breach', 'Fallout', 'story', 'Craft Signal Spoofer');
-    addLock('Terminus', 'The Scar', 'story', 'Craft Signal Spoofer');
-    addLock('Dawn', 'Haven', 'story', 'Act 3 trigger');
-
-    return locks;
-  }
-
-  _portalKey(idA, idB) {
-    return idA < idB ? `${idA}|${idB}` : `${idB}|${idA}`;
-  }
-
-  isPortalLocked(fromId, toId) {
-    const key = this._portalKey(fromId, toId);
-    const lock = this.portalLocks[key];
-    return lock && lock.locked;
+  _getGameState() {
+    return { completedQuests: this.questManager.completedQuests };
   }
 
   // ========== SAVE SYSTEM ==========
 
   buildSaveState() {
     return {
-      version: 'v0.7.b',
+      version: 'v0.7.c',
       timestamp: Date.now(),
       player: {
         level: this.player.level,
@@ -597,7 +566,6 @@ export default class FlightScene extends Phaser.Scene {
         currentSystem: this.currentSystemId,
         visitedSystems: [...this.visited],
         clearedSystems: this._clearedSystems || [],
-        portalLocks: JSON.parse(JSON.stringify(this.portalLocks)),
       },
       story: {
         firedTriggers: [...this.firedTriggers],
@@ -648,10 +616,7 @@ export default class FlightScene extends Phaser.Scene {
     }
     this._clearedSystems = u.clearedSystems || [];
 
-    // Restore portal lock state
-    if (u.portalLocks) {
-      this.portalLocks = u.portalLocks;
-    }
+    // Portal locks computed from config — no save/restore needed
 
     // Story triggers
     if (s.firedTriggers) {
@@ -1409,8 +1374,12 @@ export default class FlightScene extends Phaser.Scene {
       });
     }
 
-    // Sound: rock hit
-    this.sound_mgr.playMiningClick();
+    // Sound: config-driven per asteroid type
+    if (asteroid.sounds && asteroid.sounds.hit) {
+      this.sound_mgr.play(asteroid.sounds.hit);
+    } else {
+      this.sound_mgr.playMiningClick();
+    }
 
     if (asteroid.hp <= 0) {
       this.destroyAsteroid(asteroid);
@@ -1419,7 +1388,12 @@ export default class FlightScene extends Phaser.Scene {
 
   destroyAsteroid(asteroid) {
     asteroid.mined = true;
-    this.sound_mgr.playMineComplete();
+    // Sound: config-driven per asteroid type
+    if (asteroid.sounds && asteroid.sounds.break) {
+      this.sound_mgr.play(asteroid.sounds.break);
+    } else {
+      this.sound_mgr.playMineComplete();
+    }
 
     // Bigger debris burst
     for (let i = 0; i < 8; i++) {
@@ -2012,7 +1986,7 @@ export default class FlightScene extends Phaser.Scene {
     }
 
     // Quest progress: kill_enemy
-    const killReady = this.questManager.updateProgress('kill_enemy', { enemy: 'tin_badge' });
+    const killReady = this.questManager.updateProgress('kill_enemy', { enemy: enemy.configId || 'tin_badge' });
     if (killReady.length > 0) {
       this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: That's the last one for the job! Time to report in." } });
     }
@@ -3111,17 +3085,18 @@ export default class FlightScene extends Phaser.Scene {
       startingSystemId: this.startingSystemId,
       clearedSystems: this._clearedSystems || [],
       questManager: this.questManager,
-      portalLocks: this.portalLocks,
+      checkWarpLock: (fromId, toId) => checkWarpLock(fromId, toId, this._getGameState()),
       onWarp: (id, blocked) => {
         this.scene.resume('FlightScene');
         if (!id) {
-          // Warp blocked — bark based on reason
-          const barkText = blocked === 'locked'
-            ? "Pepper: That gate's sealed, Pax. We need to find another way."
-            : blocked === 'active'
+          if (blocked && blocked.bark) {
+            this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: blocked.bark } });
+          } else {
+            const barkText = blocked === 'active'
               ? "Pepper: Vera needs those supplies before we head out, Pax."
               : "Pepper: We should check in with Commander Vera before headin' out.";
-          this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: barkText } });
+            this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: barkText } });
+          }
           return;
         }
         const g = this.currentSystem.gates.find(x => x.targetId === id);
@@ -3153,11 +3128,14 @@ export default class FlightScene extends Phaser.Scene {
       return;
     }
     // Portal lock check
-    if (gateData.targetId && this.isPortalLocked(this.currentSystemId, gateData.targetId)) {
-      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
-        text: "Pepper: That gate's sealed, Pax. We need to find another way.",
-      }});
-      return;
+    if (gateData.targetId) {
+      const lock = checkWarpLock(this.currentSystemId, gateData.targetId, this._getGameState());
+      if (lock) {
+        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+          text: lock.bark || "Pepper: That gate's sealed, Pax. We need to find another way.",
+        }});
+        return;
+      }
     }
     // H6: Warp costs WARP_FUEL_COST fuel; block if not enough
     const WARP_FUEL_COST = 15;

@@ -1,6 +1,9 @@
 // ============================================================
 // Sound Manager — Procedural Web Audio API sounds
+// v0.7.c: Added play(soundKey) for config-driven sounds
 // ============================================================
+
+import { getSoundConfig } from '../data/entities/index.js';
 
 export default class SoundManager {
   constructor() {
@@ -194,6 +197,54 @@ export default class SoundManager {
     osc.connect(gain).connect(this.masterGain);
     osc.start();
     osc.stop(this.ctx.currentTime + 0.15);
+  }
+
+  // --- Config-driven sound player ---
+  play(soundKey) {
+    const config = getSoundConfig(soundKey);
+    if (!config) return;
+    if (config.type === 'tone') {
+      this._playTone(config.freq, config.duration, config.wave || 'sine', config.vol || 0.1, config.detune || 0);
+    } else if (config.type === 'noise') {
+      this._playNoise(config.duration, config.vol || 0.1);
+    } else if (config.type === 'sweep') {
+      this._playSweep(config.startFreq, config.endFreq, config.duration, config.wave || 'sine', config.vol || 0.1);
+    } else if (config.type === 'multi') {
+      for (const s of config.sounds) {
+        const delay = s.delay || 0;
+        if (delay > 0) {
+          setTimeout(() => this._playSoundDef(s), delay * 1000);
+        } else {
+          this._playSoundDef(s);
+        }
+      }
+    }
+    // 'music' and 'continuous' types handled by setMusic() and engine hum
+  }
+
+  _playSoundDef(def) {
+    if (def.type === 'tone') this._playTone(def.freq, def.duration, def.wave || 'sine', def.vol || 0.1, def.detune || 0);
+    else if (def.type === 'noise') this._playNoise(def.duration, def.vol || 0.1);
+    else if (def.type === 'sweep') this._playSweep(def.startFreq, def.endFreq, def.duration, def.wave || 'sine', def.vol || 0.1);
+  }
+
+  _playSweep(startFreq, endFreq, duration, type = 'sine', vol = 0.1) {
+    if (!this.ensureContext()) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = startFreq;
+    osc.frequency.exponentialRampToValueAtTime(Math.max(endFreq, 1), this.ctx.currentTime + duration);
+    gain.gain.value = vol;
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+    osc.connect(gain).connect(this.masterGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + duration + 0.05);
+  }
+
+  setMusic(regionKey) {
+    // TODO: implement ambient music loops per region
+    console.log('[Sound] Music region:', regionKey);
   }
 
   stopAll() {
