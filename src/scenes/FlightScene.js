@@ -10,7 +10,8 @@ import Player from '../entities/Player.js';
 import InventorySystem from '../systems/InventorySystem.js';
 import { RESOURCES, getAvailableResources } from '../data/resources.js';
 import { RNG } from '../config/constants.js';
-import { STORY_BEATS, getStoryBeat, getBarksByTrigger, getRandomBark } from '../data/story.js';
+import { STORY_BEATS, getStoryBeat } from '../data/story.js';
+import { getBarksByTrigger, getRandomBark } from '../data/barks.js';
 import { NPCS } from '../data/npcs.js';
 import DialogueUI from '../ui/DialogueUI.js';
 import SoundManager from '../systems/SoundManager.js';
@@ -49,8 +50,14 @@ export default class FlightScene extends Phaser.Scene {
     // Sound
     this.sound_mgr = new SoundManager();
 
-    // Universe — loaded from JSON (v0.7.b), no seed needed
+    // Universe — structure from JSON, interiors vary per save via galaxySeed
     this.universe = loadUniverse();
+    if (this._initData && this._initData.fromSave) {
+      const save = SaveManager.load();
+      this.galaxySeed = (save && save.universe && save.universe.galaxySeed) || 1;
+    } else {
+      this.galaxySeed = Math.floor(Math.random() * 999999) + 1;
+    }
     this.systemCache = {};
     this.currentSystemId = null;
     this.currentSystem = null;
@@ -373,7 +380,7 @@ export default class FlightScene extends Phaser.Scene {
     if (!this.systemCache[sysId]) {
       // H3/H4: mark isStarting on sysData before generating so UniverseGenerator can add trading post
       if (sysId === this.startingSystemId) sysData.isStarting = true;
-      this.systemCache[sysId] = generateSystem(sysData, this.universe);
+      this.systemCache[sysId] = generateSystem(sysData, this.universe, this.galaxySeed);
       const rng = new RNG(sysData.seed + 5555);
       for (const st of this.systemCache[sysId].stations) {
         // H4/H5: Assign NPC based on station type
@@ -419,18 +426,7 @@ export default class FlightScene extends Phaser.Scene {
         }
       }
 
-      // Add Planet Zion to the starting system
-      if (sysId === this.startingSystemId) {
-        this.systemCache[sysId].planets.push({
-          x: this.systemCache[sysId].star.x + 350,
-          y: this.systemCache[sysId].star.y - 200,
-          radius: 40,
-          orbitDist: Math.hypot(350, 200),
-          type: { name: 'Zion', color: '#2ecc71', resources: ['iron', 'carbon'] },
-          isHub: true,
-          name: 'Zion',
-        });
-      }
+      // Planet Zion now defined in zone override — no hardcoded creation needed
     }
 
     const isFirstVisit = !this.visited.has(sysId);
@@ -444,9 +440,10 @@ export default class FlightScene extends Phaser.Scene {
       this.sound_mgr.setMusic(this.currentSystem.zoneConfig.music);
     }
 
-    // Quest progress: visit_system
+    // Quest progress: visit_system + visit_system_specific
     if (isFirstVisit && this.questManager) {
       const visitReady = this.questManager.updateProgress('visit_system', {});
+      this.questManager.updateProgress('visit_system_specific', { system: sysData.name });
       if (visitReady.length > 0) {
         this.time.delayedCall(3000, () => {
           this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: That's enough systems scouted. Let's report back." } });
@@ -547,7 +544,7 @@ export default class FlightScene extends Phaser.Scene {
 
   buildSaveState() {
     return {
-      version: 'v0.7.c',
+      version: 'v0.7.d',
       timestamp: Date.now(),
       player: {
         level: this.player.level,
@@ -563,6 +560,7 @@ export default class FlightScene extends Phaser.Scene {
       },
       inventory: this.inventory.slots.map(s => s ? { ...s } : null),
       universe: {
+        galaxySeed: this.galaxySeed,
         currentSystem: this.currentSystemId,
         visitedSystems: [...this.visited],
         clearedSystems: this._clearedSystems || [],
@@ -1310,7 +1308,7 @@ export default class FlightScene extends Phaser.Scene {
     if (idleTime >= this.idleThreshold && sinceLastBark >= this.idleBarkCooldown) {
       const bark = getRandomBark('random_idle');
       if (bark) {
-        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: ' + bark.lines[0] } });
+        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: (bark.speaker || 'Pepper') + ': ' + (bark.text || bark.lines[0]) } });
         this.lastIdleBarkTime = now;
         this.idleThreshold = this.idleThresholdMin + Math.random() * (this.idleThresholdMax - this.idleThresholdMin);
       }
@@ -1487,7 +1485,7 @@ export default class FlightScene extends Phaser.Scene {
       }
       return;
     }
-    this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: ' + bark.lines[0] } });
+    this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: (bark.speaker || 'Pepper') + ': ' + (bark.text || bark.lines[0]) } });
   }
 
   // --- TextQueue callbacks ---
@@ -1981,7 +1979,7 @@ export default class FlightScene extends Phaser.Scene {
       const barks = getBarksByTrigger('enemy_destroyed');
       if (barks.length > 0) {
         const bark = barks[Math.floor(Math.random() * barks.length)];
-        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: ' + bark.lines[0] } });
+        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: (bark.speaker || 'Pepper') + ': ' + (bark.text || bark.lines[0]) } });
       }
     }
 
@@ -2390,6 +2388,11 @@ export default class FlightScene extends Phaser.Scene {
     }
     const npc = this.nearStation.npc;
     if (!npc) return;
+
+    // Quest progress: visit_npc
+    if (npc.id) {
+      this.questManager.updateProgress('visit_npc', { npc: npc.id });
+    }
 
     // Quest-aware NPC interaction
     // 1. Check for completable quest

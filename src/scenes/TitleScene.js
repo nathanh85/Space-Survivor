@@ -109,6 +109,11 @@ export default class TitleScene extends Phaser.Scene {
       fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
     }).setOrigin(0.5);
 
+    // Chrome disclaimer
+    this.add.text(W / 2, H * 0.84, 'Best experienced in Chrome with a gamepad', {
+      fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#444444',
+    }).setOrigin(0.5);
+
     // Version
     this.add.text(W / 2, H - 20, BUILD_VERSION + ' \u2014 P.E.S.T.S.', {
       fontSize: '9px', fontFamily: '"Press Start 2P", monospace', color: '#333333',

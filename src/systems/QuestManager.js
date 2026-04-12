@@ -60,6 +60,16 @@ export default class QuestManager {
         } else if (eventType === 'visit_system' && obj.type === 'visit_system') {
           obj.current = Math.min(obj.target, obj.current + 1);
           changed = true;
+        } else if (eventType === 'visit_npc' && obj.type === 'visit_npc') {
+          if (obj.npc === eventData.npc) {
+            obj.current = Math.min(obj.target, obj.current + 1);
+            changed = true;
+          }
+        } else if (eventType === 'visit_system_specific' && obj.type === 'visit_system_specific') {
+          if (obj.system === eventData.system) {
+            obj.current = Math.min(obj.target, obj.current + 1);
+            changed = true;
+          }
         }
       }
       if (changed && this.isQuestComplete(quest.id)) {

@@ -91,8 +91,8 @@ function rollDrop(rng, drops) {
   return drops.length > 0 ? drops[0].id : 'iron';
 }
 
-export function generateSystem(sysData, universeData) {
-  const rng = new RNG(sysData.seed);
+export function generateSystem(sysData, universeData, galaxySeed = 0) {
+  const rng = new RNG(sysData.seed + galaxySeed);
   const cx = SYS_W / 2;
   const cy = SYS_H / 2;
 
@@ -125,9 +125,31 @@ export function generateSystem(sysData, universeData) {
     bgStars: [],
   };
 
-  // Planets
-  const numPlanets = rng.int(1, 5);
-  for (let i = 0; i < numPlanets; i++) {
+  // Planets — 3-layer: override > template extraPlanets > procedural fallback
+  if (zoneConfig.planets && zoneConfig.planets.length > 0) {
+    for (const pDef of zoneConfig.planets) {
+      const angle = rng.float(0, Math.PI * 2);
+      const dist = rng.int(250, 500);
+      system.planets.push({
+        x: system.star.x + Math.cos(angle) * dist,
+        y: system.star.y + Math.sin(angle) * dist,
+        radius: rng.int(25, 45),
+        type: { name: pDef.name || pDef.type, color: pDef.color || '#888888', resources: [] },
+        orbitDist: dist,
+        isHub: pDef.isHub || false,
+        name: pDef.name,
+      });
+    }
+  }
+  // Extra procedural planets (0 if override specified planets, 1-4 otherwise)
+  const extraPlanets = zoneConfig.extraPlanets !== undefined
+    ? (typeof zoneConfig.extraPlanets === 'number'
+        ? zoneConfig.extraPlanets
+        : rng.int(zoneConfig.extraPlanets.min, zoneConfig.extraPlanets.max))
+    : (zoneConfig.planets && zoneConfig.planets.length > 0
+        ? 0
+        : rng.int(1, 4));
+  for (let i = 0; i < extraPlanets; i++) {
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(250, 1000);
     system.planets.push({
@@ -177,22 +199,24 @@ export function generateSystem(sysData, universeData) {
     });
   }
 
-  // --- STATIONS from JSON station field ---
+  // --- STATIONS: zone override first, then JSON station field fallback ---
   const stationType = sysData.station || 'none';
 
-  if (stationType === 'hub' && sysData.isStarting) {
-    // Zion starting hub — Grix Trading Co.
-    const angle = rng.float(0, Math.PI * 2);
-    const dist = rng.int(500, 800);
-    system.stations.push({
-      x: system.star.x + Math.cos(angle) * dist,
-      y: system.star.y + Math.sin(angle) * dist,
-      name: 'Grix Trading Co.',
-      size: 16,
-      stationType: 'trading_post',
-    });
+  if (zoneConfig.stations && zoneConfig.stations.length > 0) {
+    // Zone override defines stations explicitly
+    for (const stDef of zoneConfig.stations) {
+      const angle = rng.float(0, Math.PI * 2);
+      const dist = rng.int(500, 800);
+      system.stations.push({
+        x: system.star.x + Math.cos(angle) * dist,
+        y: system.star.y + Math.sin(angle) * dist,
+        name: stDef.name || sysData.name + ' Station',
+        size: 16,
+        stationType: stDef.type || stationType,
+        npcOverride: stDef.npc || null,
+      });
+    }
   } else if (stationType === 'hub') {
-    // Non-Zion hub (Ashfall) — hub station with distinct type
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(500, 800);
     system.stations.push({
@@ -205,7 +229,6 @@ export function generateSystem(sysData, universeData) {
   } else if (stationType === 'trading') {
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.int(450, 800);
-    // Use system name for the trading post for flavor
     const tpName = sysData.name === 'Grix Station' ? 'Grix Trading Co.'
       : rng.pick(STATION_PREFIXES) + ' ' + rng.pick(STATION_SUFFIXES);
     system.stations.push({

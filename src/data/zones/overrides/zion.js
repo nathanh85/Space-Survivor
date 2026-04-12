@@ -8,4 +8,7 @@ export default {
   },
   enemies: { pool: [], count: { min: 0, max: 0 } },
   star: { type: 'yellow_dwarf' },
+  stations: [{ type: 'hub', name: 'The Outpost' }],
+  planets: [{ type: 'lush', name: 'Zion', color: '#2ecc71', isHub: true }],
+  extraPlanets: 0,
 };
