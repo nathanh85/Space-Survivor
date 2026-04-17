@@ -2,3 +2,12 @@ node_modules/
 dist/
 .DS_Store
 *.log
+
+.vercel
+
+tools/asset-manager/assets.db
+tools/asset-manager/cache/
+tools/asset-manager/__pycache__/
+tools/asset-manager/scanner_config.json
+tools/asset-manager/portraits.json
+tools/asset-manager/portraits-*.json

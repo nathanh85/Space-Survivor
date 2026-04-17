@@ -3,6 +3,7 @@
 // ============================================================
 
 import Phaser from 'phaser';
+import PreloadScene from './scenes/PreloadScene.js';
 import TitleScene from './scenes/TitleScene.js';
 import IntroScene from './scenes/IntroScene.js';
 import FlightScene from './scenes/FlightScene.js';
@@ -28,7 +29,7 @@ const config = {
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [TitleScene, IntroScene, FlightScene, GalaxyMapScene, WarpScene, CutsceneScene, HubScene],
+  scene: [PreloadScene, TitleScene, IntroScene, FlightScene, GalaxyMapScene, WarpScene, CutsceneScene, HubScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
