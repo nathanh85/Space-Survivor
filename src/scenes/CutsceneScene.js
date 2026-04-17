@@ -6,6 +6,10 @@
 import Phaser from 'phaser';
 import { STORY_BEATS } from '../data/story.js';
 import { getCutsceneConfig } from '../data/cutscenes/index.js';
+import { characterPortraitKey } from '../data/entities/portraits.js';
+
+const _PAX_DEFAULT    = characterPortraitKey('pax',    'neutral_2');
+const _PEPPER_DEFAULT = characterPortraitKey('pepper', 'neutral_2');
 
 const SPEAKER_COLORS = {
   PEPPER: '#87CEEB', PAX: '#e67e22', 'M.O.T.H.E.R.': '#e74c3c',
@@ -22,18 +26,6 @@ export default class CutsceneScene extends Phaser.Scene {
     this._padALast = false;
   }
 
-  preload() {
-    const portraits = [
-      'pax_neutral', 'pepper_neutral', 'mother', 'marshal', 'judge',
-      'grix', 'vera', 'informant', 'miner', 'smuggler', 'commander', 'mechanic'
-    ];
-    portraits.forEach(p => {
-      if (!this.textures.exists(p)) {
-        this.load.image(p, `assets/portraits/${p}.png`);
-      }
-    });
-  }
-
   create() {
     const { width: W, height: H } = this.cameras.main;
     this.cameras.main.setBackgroundColor('#000000');
@@ -48,8 +40,8 @@ export default class CutsceneScene extends Phaser.Scene {
       if (storyBeat) {
         this.beats = storyBeat.lines.map(line => ({
           tmpl: 'dialogue', spk: (storyBeat.speaker || 'PEPPER').toUpperCase(),
-          port: storyBeat.portrait || 'pepper_neutral', side: 'right',
-          portLeft: 'pax_neutral', portRight: storyBeat.portrait || 'pepper_neutral',
+          port: storyBeat.portrait || _PEPPER_DEFAULT, side: 'right',
+          portLeft: _PAX_DEFAULT, portRight: storyBeat.portrait || _PEPPER_DEFAULT,
           line, spd: 30, hold: 2500,
           sfx: 'none', enter: 'none', impact: 'none', trans: 'none',
         }));

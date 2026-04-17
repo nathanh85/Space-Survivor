@@ -6,14 +6,6 @@
 import Phaser from 'phaser';
 import { loadPortraits, PORTRAIT_MANIFEST } from '../data/entities/portraits.js';
 
-// Legacy portrait keys still referenced by cutscene scripts + HUD portraits.
-// These are scheduled for removal in Patch 2 (v0.7.d.2) once all story/beat
-// files have been migrated to call characterPortraitKey() instead.
-const LEGACY_PORTRAITS = [
-  'pax_neutral', 'pepper_neutral', 'mother', 'marshal', 'judge',
-  'grix', 'vera', 'informant', 'miner', 'smuggler', 'commander', 'mechanic',
-];
-
 export default class PreloadScene extends Phaser.Scene {
   constructor() {
     super({ key: 'PreloadScene' });
@@ -38,20 +30,11 @@ export default class PreloadScene extends Phaser.Scene {
       barFill.width = barW * value;
     });
 
-    // --- Legacy portraits (kept until Patch 2 migrates cutscene scripts) ----
-    LEGACY_PORTRAITS.forEach(p => {
-      this.load.image(p, `assets/portraits/${p}.png`);
-    });
-
-    // --- New portrait manifest ---------------------------------------------
+    // --- Portrait manifest -------------------------------------------------
     loadPortraits(this);
 
-    // Only warn about non-portrait misses — portrait misses are covered by
-    // manifest validation at load time.
     this.load.on('loaderror', (file) => {
-      if (!file.key.includes('__')) {
-        console.warn('[PRELOAD] Failed:', file.key);
-      }
+      console.warn('[PRELOAD] Failed:', file.key);
     });
   }
 
@@ -61,10 +44,9 @@ export default class PreloadScene extends Phaser.Scene {
     const manifestKeys = PORTRAIT_MANIFEST.flatMap(entry =>
       entry.expressions.map(expr => `${entry.id}__${expr}`)
     );
-    const allKeys = [...LEGACY_PORTRAITS, ...manifestKeys];
 
     let applied = 0;
-    for (const key of allKeys) {
+    for (const key of manifestKeys) {
       if (this.textures.exists(key)) {
         const tex = this.textures.get(key);
         tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
@@ -72,7 +54,7 @@ export default class PreloadScene extends Phaser.Scene {
       }
     }
 
-    console.log(`[PRELOAD] Complete — ${applied}/${allKeys.length} portrait textures ready`);
+    console.log(`[PRELOAD] Complete — ${applied}/${manifestKeys.length} portrait textures ready`);
     this.scene.start('TitleScene');
   }
 }

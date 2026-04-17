@@ -1,6 +1,8 @@
 // Story beats — cutscenes, transmissions, barks
 // Each has: id, type, trigger, speaker, portrait, lines, choices, next
 
+import { characterPortraitKey } from './entities/portraits.js';
+
 export const STORY_BEATS = [
   // === ACT 1 CUTSCENES ===
   {
@@ -8,7 +10,7 @@ export const STORY_BEATS = [
     type: 'cutscene',
     trigger: 'game_start',
     speaker: 'pepper',
-    portrait: 'pepper_neutral',
+    portrait: characterPortraitKey('pepper', 'neutral_2'),
     lines: [
       "Well Pax... we're alive. That's somethin'.",
       "The Dustkicker's seen better days, but she's still in one piece. Mostly.",
@@ -25,7 +27,7 @@ export const STORY_BEATS = [
     type: 'cutscene',
     trigger: 'first_warp',
     speaker: 'pepper',
-    portrait: 'pepper_excited',
+    portrait: characterPortraitKey('pepper', 'smile_1'),
     lines: [
       "Warp drive's online! Well... mostly online. It's making a sound I don't love.",
       "Hold on to somethin', Pax!",
