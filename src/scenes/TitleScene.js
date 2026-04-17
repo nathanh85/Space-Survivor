@@ -11,41 +11,12 @@ export default class TitleScene extends Phaser.Scene {
     super({ key: 'TitleScene' });
   }
 
-  preload() {
-    // Load ALL portraits here (first scene) so they're available globally
-    const portraits = [
-      'pax_neutral', 'pepper_neutral', 'mother', 'marshal', 'judge',
-      'grix', 'vera', 'informant', 'miner', 'smuggler', 'commander', 'mechanic'
-    ];
-    portraits.forEach(p => {
-      this.load.image(p, `assets/portraits/${p}.png`);
-    });
-    this.load.on('loaderror', (file) => {
-      console.error('[TitleScene] Portrait load FAILED:', file.key, file.url);
-    });
-    this.load.on('filecomplete', (key) => {
-      if (portraits.includes(key)) {
-        console.log('[TitleScene] Portrait loaded OK:', key);
-      }
-    });
-  }
+  // Portraits loaded by PreloadScene — no preload needed here
 
   create() {
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
     this.cameras.main.setBackgroundColor('#050510');
-
-    // H10: Apply LINEAR filtering to all portrait textures for quality upscaling
-    const portraitKeys = [
-      'pax_neutral', 'pepper_neutral', 'mother', 'marshal', 'judge',
-      'grix', 'vera', 'informant', 'miner', 'smuggler', 'commander', 'mechanic',
-    ];
-    portraitKeys.forEach(key => {
-      const tex = this.textures.get(key);
-      if (tex && tex.key !== '__MISSING') {
-        tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
-      }
-    });
 
     // Check save compatibility — old saves (pre v0.7.b) are incompatible with hex universe
     const saveVersion = SaveManager.getSaveVersion();

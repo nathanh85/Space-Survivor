@@ -7,6 +7,11 @@ import { STATION_CONFIGS } from './stations.js';
 import { STAR_CONFIGS } from './stars.js';
 import { PLANET_CONFIGS } from './planets.js';
 import { SOUND_CONFIGS } from './sounds.js';
+import {
+  PORTRAIT_MANIFEST, CHARACTER_MAP, loadPortraits,
+  getPortraitKey, portraitKey, characterPortraitKey,
+  getCharacterIds, getExpressions,
+} from './portraits.js';
 
 const REGISTRY = {
   asteroids: ASTEROID_CONFIGS,
@@ -31,5 +36,6 @@ export function getSoundConfig(key) {
 export {
   ASTEROID_CONFIGS, ENEMY_ENTITY_CONFIGS, RANK_MODIFIERS,
   WEAPON_CONFIGS, SHIP_UPGRADES, STATION_CONFIGS, STAR_CONFIGS,
-  PLANET_CONFIGS, SOUND_CONFIGS,
+  PLANET_CONFIGS, SOUND_CONFIGS, PORTRAIT_MANIFEST, loadPortraits,
+  getPortraitKey,
 };
