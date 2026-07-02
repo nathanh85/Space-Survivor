@@ -5,20 +5,28 @@
 import Phaser from 'phaser';
 
 export default class Enemy {
-  constructor(scene, x, y, config) {
+  constructor(scene, x, y, config, rank = null) {
     this.scene = scene;
     this.config = config;
-    this.hp = config.hp;
-    this.maxHp = config.hp;
-    this.damage = config.damage;
-    this.speed = config.speed;
+    // v0.7.g.1: rank multiplies hp/damage/speed; credits + xp scale with hpMult
+    this.rank = rank; // { key, hpMult, dmgMult, spdMult, color, stripes } or null
+    const hpMult = rank ? rank.hpMult : 1;
+    const dmgMult = rank ? rank.dmgMult : 1;
+    const spdMult = rank ? rank.spdMult : 1;
+    this.hp = Math.round(config.hp * hpMult);
+    this.maxHp = this.hp;
+    this.damage = Math.round(config.damage * dmgMult);
+    this.speed = config.speed * spdMult;
     this.detectRange = config.detectRange;
     this.attackRange = config.attackRange;
     this.fireRate = config.fireRate;
     this.lastFired = 0;
     this.state = 'patrol';
-    this.loot = config.loot;
-    this.xp = config.xp;
+    this.loot = config.loot ? {
+      ...config.loot,
+      credits: [Math.round(config.loot.credits[0] * hpMult), Math.round(config.loot.credits[1] * hpMult)],
+    } : config.loot;
+    this.xp = Math.round((config.xp || 10) * hpMult);
     this.alive = true;
     this.angle = 0;
     this.distantTime = 0; // time spent far from player
@@ -33,7 +41,7 @@ export default class Enemy {
       .setDepth(95);
     scene.physics.add.existing(this.body);
     this.body.body.setCollideWorldBounds(false);
-    this.body.body.setMaxVelocity(config.speed);
+    this.body.body.setMaxVelocity(this.speed);
 
     // Health bar (only visible when damaged)
     this.hpBar = scene.add.graphics().setDepth(96);
@@ -234,6 +242,35 @@ export default class Enemy {
     for (let i = 1; i < 4; i++) g.lineTo(pts[i].x, pts[i].y);
     g.closePath();
     g.fillPath();
+
+    // Rank markings (v0.7.g.1): veterans get a gold hull outline;
+    // stripes render as short bars across the tail in rank color
+    if (this.rank && !flash) {
+      const rc = this.rank.color;
+      if (this.rank.key.startsWith('veteran')) {
+        g.lineStyle(1.5, rc, 0.9);
+        g.beginPath();
+        g.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < 4; i++) g.lineTo(pts[i].x, pts[i].y);
+        g.closePath();
+        g.strokePath();
+      }
+      if (this.rank.stripes > 0) {
+        // Perpendicular unit vector to facing
+        const px = -sin, py = cos;
+        for (let i = 0; i < this.rank.stripes; i++) {
+          // Positions spaced back from center toward tail
+          const back = 0.15 + i * 0.35;
+          const bx = this.x - cos * s * back;
+          const by = this.y - sin * s * back;
+          g.lineStyle(2, rc, 1);
+          g.beginPath();
+          g.moveTo(bx + px * s * 0.5, by + py * s * 0.5);
+          g.lineTo(bx - px * s * 0.5, by - py * s * 0.5);
+          g.strokePath();
+        }
+      }
+    }
 
     // Red glow
     if (!flash) {

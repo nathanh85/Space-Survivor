@@ -1,4 +1,26 @@
 // Enemy type configurations
+import { RANK_MODIFIERS } from './entities/enemies.js';
+
+// E3 rank weights by system danger (v0.7.g.1).
+// D1-2 never spawns (handled upstream); D7+ wandering spawns lean veteran.
+export function pickRankForDanger(danger) {
+  const roll = Math.random();
+  let table;
+  if (danger <= 4) {
+    table = [[0.70, 'standard_0'], [0.25, 'standard_1'], [0.05, 'standard_2']];
+  } else if (danger <= 6) {
+    table = [[0.60, 'standard_0'], [0.20, 'standard_1'], [0.05, 'standard_2'], [0.15, 'veteran_0']];
+  } else {
+    table = [[0.45, 'standard_0'], [0.25, 'standard_1'], [0.10, 'standard_2'],
+             [0.15, 'veteran_0'], [0.05, 'veteran_1']];
+  }
+  let acc = 0;
+  for (const [w, key] of table) {
+    acc += w;
+    if (roll < acc) return { key, ...RANK_MODIFIERS[key] };
+  }
+  return { key: 'standard_0', ...RANK_MODIFIERS.standard_0 };
+}
 
 export const TIN_BADGE = {
   name: 'Tin Badge',

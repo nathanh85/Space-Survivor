@@ -106,7 +106,7 @@ export const PLAYER_DEFAULTS = {
 // --- FONT ---
 export const FONT = '"Press Start 2P", monospace';
 
-export const BUILD_VERSION = 'v0.7.f.2';
+export const BUILD_VERSION = 'v0.7.g.1';
 export const BUILD_DATE = '2026-07-01';
 
 // --- COLORS ---

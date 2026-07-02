@@ -3,7 +3,7 @@
 // ============================================================
 
 import Enemy from '../entities/Enemy.js';
-import { TIN_BADGE, SCOUT, SPAWN_CONFIG } from '../data/enemies.js';
+import { TIN_BADGE, SCOUT, SPAWN_CONFIG, pickRankForDanger } from '../data/enemies.js';
 
 export default class EnemyManager {
   constructor(scene) {
@@ -69,11 +69,12 @@ export default class EnemyManager {
       enemyType = (Math.random() < 0.6 && SCOUT) ? SCOUT : TIN_BADGE;
     }
 
-    this.spawnEnemy(sx, sy, enemyType);
+    // v0.7.g.1: rank by danger (E3 weights)
+    this.spawnEnemy(sx, sy, enemyType, pickRankForDanger(danger));
   }
 
-  spawnEnemy(x, y, config) {
-    const enemy = new Enemy(this.scene, x, y, config);
+  spawnEnemy(x, y, config, rank = null) {
+    const enemy = new Enemy(this.scene, x, y, config, rank);
     this.enemies.push(enemy);
     this.totalSpawned++;
     return enemy;
