@@ -468,11 +468,22 @@ export default class FlightScene extends Phaser.Scene {
     }
 
     const sys = this.currentSystem;
-    // B15: Reset asteroid HP to full on every system entry (cached systems retain damage)
-    for (const a of sys.asteroids) {
-      a.hp = a.maxHp;
-      a.mined = false;
-      a.mineProgress = 0;
+    // O7 (v0.7.f.1): asteroids persist mined across entries. When <30% of the
+    // original count remains, respawn back to 70% on entry (never while present).
+    // Partial damage on surviving rocks still resets to full (B15 behavior).
+    {
+      const total = sys.asteroids.length;
+      const unmined = sys.asteroids.filter(a => !a.mined).length;
+      if (total > 0 && unmined < total * 0.3) {
+        const want = Math.ceil(total * 0.7);
+        const minedRocks = sys.asteroids.filter(a => a.mined);
+        for (let i = 0; i < want - unmined && i < minedRocks.length; i++) {
+          minedRocks[i].mined = false;
+        }
+      }
+      for (const a of sys.asteroids) {
+        if (!a.mined) { a.hp = a.maxHp; a.mineProgress = 0; }
+      }
     }
     this.assignResources(sys.asteroids, sysData, sys.planets);
     this.planets = sys.planets;
@@ -593,10 +604,9 @@ export default class FlightScene extends Phaser.Scene {
 
   assignResources(asteroids, sysData, planets) {
     // resourceId already set by UniverseGenerator from type-based drop tables.
-    // Just initialize gameplay state and mineTime here.
+    // Just initialize mineTime here. Mined state is owned by the O7 respawn
+    // rule in enterSystem — do NOT reset it here.
     for (const a of asteroids) {
-      a.mined = false;
-      a.mineProgress = 0;
       const res = RESOURCES[a.resourceId];
       a.mineTime = res ? 1.0 + (res.tier.level - 1) * 0.5 : 2;
     }
@@ -996,8 +1006,15 @@ export default class FlightScene extends Phaser.Scene {
       }
       g.closePath();
       g.fillPath();
-      // Subtle edge highlight
-      g.lineStyle(0.5, 0xffffff, 0.15);
+      // Edge highlight — T2/T3 shimmer brighter with a slow pulse (v0.7.f.1)
+      const tier = a.tier || 1;
+      if (tier >= 2) {
+        const shimmer = 0.35 + Math.sin(t * 2.5 + (a.shapeSeed || 0)) * 0.25;
+        const shimmerColor = tier === 2 ? 0xd0f0ff : 0xd9a8ff;
+        g.lineStyle(1.5, shimmerColor, Math.max(0.15, shimmer));
+      } else {
+        g.lineStyle(0.5, 0xffffff, 0.15);
+      }
       g.beginPath();
       for (let i = 0; i < a._shapePoints.length; i++) {
         const p = a._shapePoints[i];
@@ -1489,6 +1506,33 @@ export default class FlightScene extends Phaser.Scene {
 
     if (asteroid.hp <= 0) {
       this.destroyAsteroid(asteroid);
+    }
+  }
+
+  // v0.7.f.1: shot bounces off a rock too hard for the current weapon
+  _deflectShot(proj, asteroid) {
+    // Spark burst at impact point, angled away from the rock
+    const angle = Phaser.Math.Angle.Between(asteroid.x, asteroid.y, proj.x, proj.y);
+    for (let i = 0; i < 4; i++) {
+      const sx = proj.x, sy = proj.y;
+      const p = this.add.rectangle(sx, sy, 2, 2, 0xffffff).setDepth(200).setAlpha(0.9);
+      const spread = angle + (Math.random() - 0.5) * 1.2;
+      this.tweens.add({
+        targets: p,
+        x: sx + Math.cos(spread) * (20 + Math.random() * 25),
+        y: sy + Math.sin(spread) * (20 + Math.random() * 25),
+        alpha: 0, duration: 250, onComplete: () => p.destroy(),
+      });
+    }
+    proj.destroy();
+    this.sound_mgr.play('asteroid_deflect');
+
+    // Pepper explains the gate — once per session
+    if (!this.sessionTriggers.has('deflect_bark')) {
+      this.sessionTriggers.add('deflect_bark');
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: "Pepper: That rock's tougher than our laser, Pax. We need a bigger gun.",
+      }});
     }
   }
 
@@ -1992,9 +2036,14 @@ export default class FlightScene extends Phaser.Scene {
         if (a.mined) continue;
         const dist = Phaser.Math.Distance.Between(proj.x, proj.y, a.x, a.y);
         if (dist < a.size + 4) {
-          const dmg = proj._damage || 15;
-          proj.destroy();
-          this.handleAsteroidHit(a, dmg);
+          // v0.7.f.1: hardness gate — weaker weapons deflect off harder rock
+          if ((proj._hardness || 1) < (a.hardness || 1)) {
+            this._deflectShot(proj, a);
+          } else {
+            const dmg = proj._damage || 15;
+            proj.destroy();
+            this.handleAsteroidHit(a, dmg);
+          }
           break;
         }
       }

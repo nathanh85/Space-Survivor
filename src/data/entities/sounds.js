@@ -51,6 +51,12 @@ export const SOUND_CONFIGS = {
   inventory_whoosh:    { type: 'sweep', startFreq: 400, endFreq: 200, duration: 0.15, wave: 'sine', vol: 0.06 },
   mining_click:        { type: 'tone', freq: 800, duration: 0.05, wave: 'square', vol: 0.06 },
 
+  // Asteroid deflect — dull clank (v0.7.f.1)
+  asteroid_deflect:    { type: 'multi', sounds: [
+    { type: 'tone', freq: 200, duration: 0.08, wave: 'square', vol: 0.07 },
+    { type: 'noise', duration: 0.05, vol: 0.05 },
+  ]},
+
   // Weapons (v0.7.e.3)
   cannon_fire:         { type: 'sweep', startFreq: 80, endFreq: 40, duration: 0.15, wave: 'sawtooth', vol: 0.14 },
   component_pickup:    { type: 'multi', sounds: [
