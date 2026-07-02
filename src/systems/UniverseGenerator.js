@@ -98,8 +98,9 @@ export function generateSystem(sysData, universeData, galaxySeed = 0) {
 
   // Zone config (template + override merge)
   const zoneConfig = getZoneConfig(sysData.id);
+  const layout = zoneConfig.layout || null; // v0.9.d custom layouts
 
-  // Star — from zone config star type
+  // Star — from zone config star type; position from layout when given
   const starType = zoneConfig.star ? STAR_CONFIGS[zoneConfig.star.type] : null;
   const starRadius = starType
     ? rng.int(starType.radius.min, starType.radius.max)
@@ -112,8 +113,8 @@ export function generateSystem(sysData, universeData, galaxySeed = 0) {
     data: sysData,
     zoneConfig: zoneConfig,
     star: {
-      x: cx + rng.int(-100, 100),
-      y: cy + rng.int(-100, 100),
+      x: layout && layout.star ? layout.star.x : cx + rng.int(-100, 100),
+      y: layout && layout.star ? layout.star.y : cy + rng.int(-100, 100),
       radius: starRadius,
       color: starColor,
       configId: zoneConfig.star ? zoneConfig.star.type : 'yellow_dwarf',
@@ -123,19 +124,35 @@ export function generateSystem(sysData, universeData, galaxySeed = 0) {
     stations: [],
     gates: [],
     bgStars: [],
+    wrecks: [],
+    anomaly: layout ? layout.anomaly || null : null,
   };
+
+  // Wreck props (uncrackable hulks — v0.9.d)
+  if (layout && layout.wrecks) {
+    for (const w of layout.wrecks) {
+      system.wrecks.push({
+        x: w.x, y: w.y,
+        size: Math.round(22 * (w.scale || 2)),
+        shapeSeed: rng.int(1, 999999),
+        rotation: rng.float(0, Math.PI * 2),
+      });
+    }
+  }
 
   // Planets — 3-layer: override > template extraPlanets > procedural fallback
   if (zoneConfig.planets && zoneConfig.planets.length > 0) {
     for (const pDef of zoneConfig.planets) {
       const angle = rng.float(0, Math.PI * 2);
       const dist = rng.int(250, 500);
+      const px = pDef.x !== undefined ? pDef.x : system.star.x + Math.cos(angle) * dist;
+      const py = pDef.y !== undefined ? pDef.y : system.star.y + Math.sin(angle) * dist;
       system.planets.push({
-        x: system.star.x + Math.cos(angle) * dist,
-        y: system.star.y + Math.sin(angle) * dist,
+        x: px,
+        y: py,
         radius: rng.int(25, 45),
         type: { name: pDef.name || pDef.type, color: pDef.color || '#888888', resources: [] },
-        orbitDist: dist,
+        orbitDist: Math.hypot(px - system.star.x, py - system.star.y),
         isHub: pDef.isHub || false,
         name: pDef.name,
       });
@@ -161,11 +178,36 @@ export function generateSystem(sysData, universeData, galaxySeed = 0) {
     });
   }
 
-  // Asteroids — from zone config pool + entity configs
+  // Asteroids — v0.9.d: fixed layout list replaces procedural placement
+  if (layout && layout.asteroids) {
+    for (const entry of layout.asteroids) {
+      const astConfig = ASTEROID_CONFIGS[entry.configId];
+      if (!astConfig) continue;
+      const aSize = entry.size || rng.int(astConfig.size.min, astConfig.size.max);
+      const hp = rng.int(astConfig.hp.min, astConfig.hp.max);
+      system.asteroids.push({
+        x: entry.x, y: entry.y, size: aSize,
+        hp: hp, maxHp: hp,
+        configId: entry.configId,
+        asteroidType: astConfig.type,
+        tier: astConfig.tier || 1,
+        hardness: astConfig.hardness || 1,
+        color: '#' + astConfig.tint.toString(16).padStart(6, '0'),
+        rotation: rng.float(0, Math.PI * 2),
+        rotSpeed: rng.float(-0.015, 0.015),
+        shapeSeed: rng.int(1, 999999),
+        resourceId: rollDrop(rng, astConfig.drops),
+        sounds: astConfig.sounds,
+        mined: false,
+      });
+    }
+  }
+
+  // Procedural asteroids — from zone config pool + entity configs
   const asteroidPool = zoneConfig.asteroids ? zoneConfig.asteroids.pool : ['common_t1'];
-  const astCount = zoneConfig.asteroids
+  const astCount = (layout && layout.asteroids) ? 0 : (zoneConfig.asteroids
     ? rng.int(zoneConfig.asteroids.count.min, zoneConfig.asteroids.count.max)
-    : rng.int(30, 50);
+    : rng.int(30, 50));
 
   for (let i = 0; i < astCount; i++) {
     const angle = rng.float(0, Math.PI * 2);
@@ -205,13 +247,13 @@ export function generateSystem(sysData, universeData, galaxySeed = 0) {
   const stationType = sysData.station || 'none';
 
   if (zoneConfig.stations && zoneConfig.stations.length > 0) {
-    // Zone override defines stations explicitly
+    // Zone override defines stations explicitly (fixed x/y wins — v0.9.d)
     for (const stDef of zoneConfig.stations) {
       const angle = rng.float(0, Math.PI * 2);
       const dist = rng.int(500, 800);
       system.stations.push({
-        x: system.star.x + Math.cos(angle) * dist,
-        y: system.star.y + Math.sin(angle) * dist,
+        x: stDef.x !== undefined ? stDef.x : system.star.x + Math.cos(angle) * dist,
+        y: stDef.y !== undefined ? stDef.y : system.star.y + Math.sin(angle) * dist,
         name: stDef.name || sysData.name + ' Station',
         size: 16,
         stationType: stDef.type || stationType,
@@ -263,8 +305,9 @@ export function generateSystem(sysData, universeData, galaxySeed = 0) {
   }
   // stationType === 'none' → no station
 
-  // Guarantee ice asteroids in systems without trading (fuel backup)
-  if (stationType !== 'trading' && stationType !== 'hub') {
+  // Guarantee ice asteroids in systems without trading (fuel backup).
+  // Custom layouts (v0.9.d) place their own rocks — don't pad them.
+  if (stationType !== 'trading' && stationType !== 'hub' && !(layout && layout.asteroids)) {
     const iceConfig = ASTEROID_CONFIGS.ice_t1;
     let iceCount = 0;
     for (const a of system.asteroids) { if (a.asteroidType === 'ice') iceCount++; }

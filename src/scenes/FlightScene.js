@@ -520,6 +520,8 @@ export default class FlightScene extends Phaser.Scene {
     this.asteroids = sys.asteroids;
     this.stations = sys.stations;
     this.gates = sys.gates;
+    this.wrecks = sys.wrecks || [];
+    this.anomaly = sys.anomaly || null;
 
     this.drawBgStars(sys.bgStars);
     this.createNebulas(sysData);
@@ -599,12 +601,19 @@ export default class FlightScene extends Phaser.Scene {
     const compId = COMPONENT_LOCATIONS[sysData.name];
     if (!compId || this.components.includes(compId)) return;
 
-    // Deterministic position: offset from star, seeded per system
-    const rng = new RNG(sysData.seed + 4242);
-    const angle = rng.float(0, Math.PI * 2);
-    const dist = rng.int(900, 1400);
-    const x = sys.star.x + Math.cos(angle) * dist;
-    const y = sys.star.y + Math.sin(angle) * dist;
+    // v0.9.d: custom layouts pin the exact spot; otherwise seeded position
+    const layout = sys.zoneConfig ? sys.zoneConfig.layout : null;
+    let x, y;
+    if (layout && layout.componentPos) {
+      x = layout.componentPos.x;
+      y = layout.componentPos.y;
+    } else {
+      const rng = new RNG(sysData.seed + 4242);
+      const angle = rng.float(0, Math.PI * 2);
+      const dist = rng.int(900, 1400);
+      x = sys.star.x + Math.cos(angle) * dist;
+      y = sys.star.y + Math.sin(angle) * dist;
+    }
 
     const def = ITEMS[compId];
     const color = Phaser.Display.Color.HexStringToColor(def.color).color;
@@ -1028,6 +1037,50 @@ export default class FlightScene extends Phaser.Scene {
     const g = this.animEntityGfx; g.clear();
     const t = time / 1000;
 
+    // Wreck hulks (v0.9.d) — uncrackable, drawn as big dark polygons
+    for (const w of (this.wrecks || [])) {
+      if (!w._shapePoints) {
+        const srng = new RNG(w.shapeSeed || 999);
+        const numPts = srng.int(6, 9);
+        w._shapePoints = [];
+        for (let i = 0; i < numPts; i++) {
+          const angle = (i / numPts) * Math.PI * 2;
+          const r = w.size * (0.6 + srng.next() * 0.4);
+          w._shapePoints.push({ lx: Math.cos(angle) * r, ly: Math.sin(angle) * r });
+        }
+      }
+      const cos = Math.cos(w.rotation), sin = Math.sin(w.rotation);
+      g.fillStyle(0x3d4450);
+      g.beginPath();
+      for (let i = 0; i < w._shapePoints.length; i++) {
+        const p = w._shapePoints[i];
+        const rx = p.lx * cos - p.ly * sin + w.x;
+        const ry = p.lx * sin + p.ly * cos + w.y;
+        if (i === 0) g.moveTo(rx, ry); else g.lineTo(rx, ry);
+      }
+      g.closePath();
+      g.fillPath();
+      g.lineStyle(1, 0x5d6a7a, 0.5);
+      g.beginPath();
+      for (let i = 0; i < w._shapePoints.length; i++) {
+        const p = w._shapePoints[i];
+        const rx = p.lx * cos - p.ly * sin + w.x;
+        const ry = p.lx * sin + p.ly * cos + w.y;
+        if (i === 0) g.moveTo(rx, ry); else g.lineTo(rx, ry);
+      }
+      g.closePath();
+      g.strokePath();
+    }
+
+    // Challenge-zone anomaly teaser (v0.9.d) — pulsing violet ring
+    if (this.anomaly) {
+      const pulse = 0.35 + Math.sin(t * 2) * 0.2;
+      g.lineStyle(2.5, 0x9b59b6, pulse);
+      g.strokeCircle(this.anomaly.x, this.anomaly.y, 60 + Math.sin(t * 1.3) * 8);
+      g.fillStyle(0x9b59b6, pulse * 0.25);
+      g.fillCircle(this.anomaly.x, this.anomaly.y, 40);
+    }
+
     for (const a of this.asteroids) {
       if (a.mined) continue;
       const c = Phaser.Display.Color.HexStringToColor(a.color).color;
@@ -1214,6 +1267,28 @@ export default class FlightScene extends Phaser.Scene {
       }
     }
     this._padALast = !!padA;
+
+    // Ship-wreck collision (v0.9.d) — solid walls, gentle push, no damage
+    for (const w of (this.wrecks || [])) {
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, w.x, w.y);
+      if (dist < w.size + 15) {
+        const angle = Phaser.Math.Angle.Between(w.x, w.y, this.player.x, this.player.y);
+        const pushDist = (w.size + 15) - dist + 2;
+        this.player.x += Math.cos(angle) * pushDist;
+        this.player.y += Math.sin(angle) * pushDist;
+        this.player.body.velocity.x *= -0.3;
+        this.player.body.velocity.y *= -0.3;
+      }
+    }
+    // Anomaly proximity bark (locked teaser)
+    if (this.anomaly && !this.sessionTriggers.has('anomaly_bark')) {
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.anomaly.x, this.anomaly.y) < 200) {
+        this.sessionTriggers.add('anomaly_bark');
+        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+          text: "Pepper: Some kinda anomaly. It's sealed tight — whatever's inside ain't ready for visitors. Yet.",
+        }});
+      }
+    }
 
     // Ship-asteroid collision
     for (const a of this.asteroids) {
@@ -1715,7 +1790,25 @@ export default class FlightScene extends Phaser.Scene {
 
     const a = this._bossArena.center;
     this.boss = new BossHarlan(this, a.x, a.y - 300, a);
+
+    // v0.9.d: seal the N gap — 2 wrecks slide in behind the player
+    const layout = this.currentSystem.zoneConfig ? this.currentSystem.zoneConfig.layout : null;
+    if (layout && layout.arenaSeal) {
+      this._sealWrecks = layout.arenaSeal.map(s => ({
+        x: s.x, y: s.y,
+        size: Math.round(22 * (s.scale || 2)),
+        shapeSeed: Math.floor(Math.random() * 999999),
+        rotation: Math.random() * Math.PI * 2,
+      }));
+      this.wrecks.push(...this._sealWrecks);
+    }
     this.autoSave();
+  }
+
+  _unsealArena() {
+    if (!this._sealWrecks) return;
+    this.wrecks = this.wrecks.filter(w => !this._sealWrecks.includes(w));
+    this._sealWrecks = null;
   }
 
   _onHarlanDefeated() {
@@ -1723,6 +1816,7 @@ export default class FlightScene extends Phaser.Scene {
     this.boss.destroy();
     this.boss = null;
     this._bossArena = null;
+    this._unsealArena();
     this.sound_mgr.play('boss_defeat');
     this.sound_mgr.setMusic(this.currentSystem && this.currentSystem.zoneConfig
       ? this.currentSystem.zoneConfig.music : null);
@@ -1842,11 +1936,19 @@ export default class FlightScene extends Phaser.Scene {
     if (!active || qm.isQuestComplete('quest_the_heist')) return;
     if (this.heistChase) return;
 
-    const rng = new RNG(sysData.seed + 1717);
-    const angle = rng.float(0, Math.PI * 2);
-    const dist = rng.int(1100, 1500);
-    const x = sys.star.x + Math.cos(angle) * dist;
-    const y = sys.star.y + Math.sin(angle) * dist;
+    // v0.9.d: corridor layout pins the freighter at the E dead-end
+    const layout = sys.zoneConfig ? sys.zoneConfig.layout : null;
+    let x, y;
+    if (layout && layout.heistPos) {
+      x = layout.heistPos.x;
+      y = layout.heistPos.y;
+    } else {
+      const rng = new RNG(sysData.seed + 1717);
+      const angle = rng.float(0, Math.PI * 2);
+      const dist = rng.int(1100, 1500);
+      x = sys.star.x + Math.cos(angle) * dist;
+      y = sys.star.y + Math.sin(angle) * dist;
+    }
 
     const obj = this.add.container(x, y).setDepth(50);
     const gfx = this.add.graphics();
@@ -2343,6 +2445,13 @@ export default class FlightScene extends Phaser.Scene {
     // Check player projectiles vs asteroids (shoot-to-mine) — always active
     this.weaponSystem.projectiles.getChildren().forEach(proj => {
       if (!proj || !proj.active) return;
+      // Wrecks stop shots dead (v0.9.d)
+      for (const w of (this.wrecks || [])) {
+        if (Phaser.Math.Distance.Between(proj.x, proj.y, w.x, w.y) < w.size + 4) {
+          proj.destroy();
+          return;
+        }
+      }
       for (const a of this.asteroids) {
         if (a.mined) continue;
         const dist = Phaser.Math.Distance.Between(proj.x, proj.y, a.x, a.y);
@@ -2651,6 +2760,7 @@ export default class FlightScene extends Phaser.Scene {
     // v0.9.c: boss resets to Phase 1 full HP ⚑ — fight restarts on re-approach
     if (this.boss) { this.boss.destroy(); this.boss = null; }
     if (this._bossArena) this._bossArena.triggered = false;
+    this._unsealArena();
     if (this.currentSystem && this.currentSystem.zoneConfig) {
       this.sound_mgr.setMusic(this.currentSystem.zoneConfig.music);
     }

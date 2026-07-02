@@ -2,9 +2,17 @@
 import { ZONE_TEMPLATES } from './templates.js';
 import UNIVERSE_DATA from '../universe.json';
 import zion from './overrides/zion.js';
+import scrapyard from './overrides/scrapyard.js';
+import the_stand from './overrides/the_stand.js';
+import harlans_reach from './overrides/harlans_reach.js';
+import ironvale from './overrides/ironvale.js';
 
 const ZONE_OVERRIDES = {
-  'hex_0_0': zion,  // Zion is at q:0, r:0
+  'hex_0_0': zion,            // Zion
+  'hex_3_-2': scrapyard,      // Scrapyard (The Heist)
+  'hex_5_-3': the_stand,      // The Stand
+  'hex_5_-2': harlans_reach,  // Harlan's Reach (boss arena)
+  'hex_-1_1': ironvale,       // Ironvale (Diamond Aperture)
 };
 
 /**
