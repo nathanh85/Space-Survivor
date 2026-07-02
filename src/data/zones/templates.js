@@ -15,7 +15,9 @@ export const ZONE_TEMPLATES = {
     type: 'standard',
     music: 'music_frontier',
     asteroids: {
-      pool: ['iron_t1', 'carbon_t1', 'ice_t1', 'common_t1'],
+      // ~60% T1 / 40% T2 via pool repetition (REGION_RESOURCES FRONT weights)
+      pool: ['iron_t1', 'carbon_t1', 'ice_t1', 'common_t1', 'common_t1', 'common_t1',
+             'titanium_t2', 'titanium_t2', 'plasma_t2', 'cryo_t2'],
       count: { min: 20, max: 30 },
     },
     enemies: {
@@ -30,7 +32,10 @@ export const ZONE_TEMPLATES = {
     type: 'standard',
     music: 'music_outer',
     asteroids: {
-      pool: ['iron_t1', 'carbon_t1', 'ice_t1', 'common_t1'],
+      // ~25% T1 / 40% T2 / 35% T3 (REGION_RESOURCES OUTER weights)
+      pool: ['iron_t1', 'ice_t1',
+             'titanium_t2', 'plasma_t2', 'cryo_t2',
+             'darkmatter_t3', 'darkmatter_t3', 'neutronium_t3'],
       count: { min: 15, max: 25 },
     },
     enemies: {
@@ -45,7 +50,11 @@ export const ZONE_TEMPLATES = {
     type: 'standard',
     music: 'music_rift',
     asteroids: {
-      pool: ['iron_t1', 'carbon_t1', 'ice_t1', 'common_t1'],
+      // ~10% T1 / 30% T2 / 60% T3 (REGION_RESOURCES RIFT weights)
+      pool: ['ice_t1',
+             'titanium_t2', 'plasma_t2', 'cryo_t2',
+             'darkmatter_t3', 'darkmatter_t3', 'darkmatter_t3',
+             'neutronium_t3', 'neutronium_t3', 'neutronium_t3'],
       count: { min: 10, max: 20 },
     },
     enemies: {
