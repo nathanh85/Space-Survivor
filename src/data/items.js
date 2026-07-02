@@ -38,6 +38,13 @@ export const ITEMS = {
     description: "Pressurized hydrogen cell. Restores 40 fuel.",
   },
 
+  // --- Rare materials ---
+  heavy_plasma_gel: {
+    id: 'heavy_plasma_gel', name: 'Heavy Plasma Gel', type: 'material',
+    color: '#ff6b4a', value: 40, maxStack: 10, sellable: true,
+    description: "Military-grade plasma compound. Only veteran drones carry it.",
+  },
+
   // --- Quest items ---
   radio_booster: {
     id: 'radio_booster', name: 'Radio Booster', type: ITEM_TYPES.QUEST,

@@ -14,6 +14,7 @@ import { getRecipe } from '../data/recipes.js';
 import { RNG } from '../config/constants.js';
 import { STORY_BEATS, getStoryBeat } from '../data/story.js';
 import { getBarksByTrigger, getRandomBark } from '../data/barks.js';
+import { ENEMY_DROP_TABLES } from '../data/enemies.js';
 import { NPCS } from '../data/npcs.js';
 import DialogueUI from '../ui/DialogueUI.js';
 import SoundManager from '../systems/SoundManager.js';
@@ -1404,7 +1405,7 @@ export default class FlightScene extends Phaser.Scene {
 
     // Combat
     this.updateCombat(time, delta);
-    this.updateLootPickup();
+    this.updateLootPickup(delta);
     this._updateComponentPickups();
 
     // Animated entities
@@ -2179,10 +2180,10 @@ export default class FlightScene extends Phaser.Scene {
     }
 
     // Loot drop
-    this.spawnLoot(enemy.x, enemy.y, enemy.loot);
+    this.spawnLoot(enemy.x, enemy.y, enemy.loot, enemy);
   }
 
-  spawnLoot(x, y, loot) {
+  spawnLoot(x, y, loot, enemy = null) {
     if (!loot) return;
 
     // Credits (always)
@@ -2190,11 +2191,18 @@ export default class FlightScene extends Phaser.Scene {
     this.spawnLootItem(x + (Math.random() - 0.5) * 20, y + (Math.random() - 0.5) * 20,
       'credits', credits, 0xf1c40f);
 
-    // Resource (40% chance)
-    if (Math.random() < (loot.resourceChance || 0.4) && loot.resources) {
-      const resId = loot.resources[Math.floor(Math.random() * loot.resources.length)];
+    // v0.7.g.2: regional drop table rolls (replaces flat resourceChance)
+    const regionKey = this.currentSystem ? this.currentSystem.data.region.key : 'CORE';
+    const table = ENEMY_DROP_TABLES[regionKey] || ENEMY_DROP_TABLES.CORE;
+    const isVeteran = !!(enemy && enemy.rank && !enemy.rank.key.startsWith('standard'));
+    for (const row of table) {
+      if (row.veteranOnly && !isVeteran) continue;
+      if (Math.random() >= row.chance) continue;
+      const amount = row.amount[0] + Math.floor(Math.random() * (row.amount[1] - row.amount[0] + 1));
+      const def = getItemDef(row.id);
+      const color = def ? Phaser.Display.Color.HexStringToColor(def.tier ? def.tier.color : def.color).color : 0x2ecc71;
       this.spawnLootItem(x + (Math.random() - 0.5) * 30, y + (Math.random() - 0.5) * 30,
-        resId, 1, 0x2ecc71);
+        row.id, amount, color);
     }
   }
 
@@ -2203,10 +2211,13 @@ export default class FlightScene extends Phaser.Scene {
     item._lootType = type;
     item._lootAmount = amount;
 
-    // Bob animation
-    this.tweens.add({
-      targets: item, y: y - 5, yoyo: true, repeat: -1, duration: 600, ease: 'Sine.easeInOut',
-    });
+    // E7: eject with a small random impulse (decays in update), pulse alpha.
+    // No position tween — the magnet in updateLootPickup owns movement.
+    const impulseAngle = Math.random() * Math.PI * 2;
+    const impulseSpeed = 40 + Math.random() * 60;
+    item._vx = Math.cos(impulseAngle) * impulseSpeed;
+    item._vy = Math.sin(impulseAngle) * impulseSpeed;
+    this.tweens.add({ targets: item, alpha: 0.6, yoyo: true, repeat: -1, duration: 500 });
 
     // Auto-collect check each frame (stored for update loop)
     if (!this._lootItems) this._lootItems = [];
@@ -2221,14 +2232,30 @@ export default class FlightScene extends Phaser.Scene {
     });
   }
 
-  updateLootPickup() {
+  updateLootPickup(delta = 16) {
     if (!this._lootItems) return;
+    const dt = delta / 1000;
     for (let i = this._lootItems.length - 1; i >= 0; i--) {
       const item = this._lootItems[i];
       if (!item || !item.active) { this._lootItems.splice(i, 1); continue; }
 
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, item.x, item.y);
-      if (dist < 50) {
+
+      // E7: impulse drift with decay, then magnet inside r=120
+      if (item._vx || item._vy) {
+        item.x += item._vx * dt;
+        item.y += item._vy * dt;
+        item._vx *= 0.94;
+        item._vy *= 0.94;
+        if (Math.abs(item._vx) < 2 && Math.abs(item._vy) < 2) { item._vx = 0; item._vy = 0; }
+      }
+      if (dist < 120 && dist > 1) {
+        const pull = 90 + 240 * (1 - dist / 120); // accelerates as it closes
+        item.x += ((this.player.x - item.x) / dist) * pull * dt;
+        item.y += ((this.player.y - item.y) / dist) * pull * dt;
+      }
+
+      if (dist < 30) {
         this.sound_mgr.playPickup();
         let label = '';
         if (item._lootType === 'credits') {

@@ -55,6 +55,35 @@ export const SCOUT = {
   xp: 14,
 };
 
+// Regional enemy drop tables (v0.7.g.2).
+// Rows are Code's call — ENEMY_DROP_TABLE doc not in repo.
+// veteranOnly rows require a Veteran(gold)+ rank kill.
+export const ENEMY_DROP_TABLES = {
+  CORE: [
+    { id: 'iron', chance: 0.25, amount: [1, 2] },
+    { id: 'carbon', chance: 0.15, amount: [1, 2] },
+  ],
+  FRONT: [
+    { id: 'iron', chance: 0.15, amount: [1, 2] },
+    { id: 'titanium', chance: 0.15, amount: [1, 2] },
+    { id: 'plasma', chance: 0.10, amount: [1, 1] },
+    { id: 'cryo', chance: 0.08, amount: [1, 1] },
+    { id: 'heavy_plasma_gel', chance: 0.25, amount: [1, 1], veteranOnly: true },
+  ],
+  OUTER: [
+    { id: 'titanium', chance: 0.15, amount: [1, 2] },
+    { id: 'plasma', chance: 0.12, amount: [1, 2] },
+    { id: 'darkmatter', chance: 0.08, amount: [1, 1] },
+    { id: 'heavy_plasma_gel', chance: 0.30, amount: [1, 1], veteranOnly: true },
+  ],
+  RIFT: [
+    { id: 'plasma', chance: 0.12, amount: [1, 2] },
+    { id: 'darkmatter', chance: 0.12, amount: [1, 1] },
+    { id: 'neutronium', chance: 0.10, amount: [1, 1] },
+    { id: 'heavy_plasma_gel', chance: 0.35, amount: [1, 2], veteranOnly: true },
+  ],
+};
+
 // Danger rating → spawn config
 // H2: Danger 1-2 → no spawns (handled by early return in EnemyManager)
 // B22: max counts raised to match spec; intervals shortened so enemies appear promptly
