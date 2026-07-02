@@ -1,71 +1,75 @@
-# Block Survival: Space Pirates
+# P.E.S.T.S. — A Space Western
 
-A top-down space pirate survival game built with **Phaser 3** + **Vite**.
+**v1.0 — Act 1 Complete**
 
-## Quick Start
+Paxton and Pepper Haskett lost their home, their planet, and their parents to
+M.O.T.H.E.R. — a machine that calls itself law. All they have left is The
+Dustkicker, a ship held together with hope and hull tape, and each other.
 
-```bash
-npm install
-npm run dev
-```
+Fly. Mine. Trade. Craft. Fight M.O.T.H.E.R.'s Tin Badges across a 49-system
+frontier, run a heist, and take down Deputy Harlan to open the road toward
+The Factory — where the kids' parents are waiting.
 
-Open http://localhost:5173 in your browser.
+**Play it:** https://space-survivor-pink.vercel.app
+(Best experienced in Chrome with a gamepad.)
+
+Built with **Phaser 3** + **Vite**. All graphics and audio are procedural —
+no asset files except character portraits.
 
 ## Controls
 
-| Key | Action |
+| Keyboard + Mouse | Action |
 |-----|--------|
-| WASD / Arrows | Move ship |
-| Mouse | Aim |
-| M | Galaxy Map |
+| Arrow keys | Fly |
+| Mouse | Aim · left-click fires laser |
+| Right-click | Fire cannon (once crafted) |
 | E | Warp (near gate) |
-| TAB / I | Inventory |
-| Click asteroid | Mine (when close) |
+| F | Dock / land |
+| M | Galaxy map |
+| N | Music on/off |
+| TAB / I | Inventory (right-click an item to use it) |
 
-## Project Structure
+| Gamepad | Action |
+|-----|--------|
+| Left stick | Fly |
+| Right stick | Aim + auto-fire |
+| L1 | Fire cannon |
+| A | Dock / advance dialogue |
 
-```
-src/
-├── main.js                    # Phaser game config + boot
-├── config/
-│   └── constants.js           # RNG, dimensions, data tables
-├── scenes/
-│   ├── FlightScene.js         # Main gameplay
-│   ├── GalaxyMapScene.js      # Universe map overlay
-│   └── WarpScene.js           # Warp transition
-├── entities/
-│   ├── Player.js              # Ship sprite + physics
-│   ├── Planet.js              # Planet objects
-│   ├── Asteroid.js            # Mineable asteroids
-│   ├── Station.js             # Dockable stations
-│   └── WarpGate.js            # Gate objects
-├── systems/
-│   ├── UniverseGenerator.js   # Procedural universe/system gen
-│   ├── ResourceSystem.js      # Mining + resource drops
-│   └── InventorySystem.js     # Grid inventory + stacking
-├── ui/
-│   ├── HUD.js                 # Status bars + system info
-│   ├── Minimap.js             # Tactical overlay
-│   └── InventoryUI.js         # Inventory panel
-└── data/
-    ├── resources.js            # All resource definitions (4 tiers)
-    └── recipes.js              # Placeholder for Phase 4
-```
+## v1.0 — What's in Act 1
 
-## Build Phases
+- 8-quest story chain from the Supply Run to the Deputy Harlan boss fight
+- 6 cutscenes, 173 character portraits, fully voiced-in-text dialogue
+- Crafting at the Zion workbench: Laser Mk2, Cannon Mk1, hull/shield/engine
+  upgrades, consumables — gated by unique components found in the world
+- Asteroid hardness tiers (T1–T3) with weapon-gated mining
+- Enemy ranks (Standard/Veteran with stripes), regional drop tables,
+  4 enemy types, and a 3-phase boss
+- The Heist — steal M.O.T.H.E.R.'s shipment and outrun the response
+- 5 hand-built system layouts (Zion, Scrapyard, The Stand, Harlan's Reach, Ironvale)
+- Procedural regional music (pests-music-v1) + full SFX coverage
+- Save/continue with old-save compatibility
 
-- [x] Phase 1 — Foundation (universe, flight, warp, HUD, minimap)
-- [x] Phase 2 — Resources & Mining (resource nodes, mining, inventory)
-- [ ] Phase 3 — Combat
-- [ ] Phase 4 — Crafting + Skills
-- [ ] Phase 5 — Economy + Stations
-- [ ] Phase 6 — Dungeons
-- [ ] Phase 7 — Weather, Story & Polish
-
-## Build for Production
+## Quick Start (dev)
 
 ```bash
-npm run build
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # production build → dist/
 ```
 
-Output goes to `dist/`. See `GAME_DESIGN_DOC.md` for full design details.
+Deploys to Vercel automatically on push to master.
+
+## Credits
+
+- **Design, direction, and playtesting:** Nathan Haskett
+- **Design chat:** Claude (Anthropic) — narrative, systems, level design
+- **Code:** Claude (Anthropic) — Opus, Sonnet, and Fable across v0.1–v1.0
+- **Character portraits:** asset pack (see tools/asset-manager)
+- **Fonts:** Rye, Press Start 2P (Google Fonts)
+
+## Post-1.0 Roadmap
+
+Acts 2–3 (The Truth, Homecoming), Missiles/Mines, T4 asteroids,
+Elite enemies, challenge zones, The Marshal, PEST wanted level,
+Home Jump Beacon, HUD themes.
