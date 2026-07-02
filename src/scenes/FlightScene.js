@@ -129,6 +129,9 @@ export default class FlightScene extends Phaser.Scene {
 
     // M2 (v0.10.a): last docked location — death respawns here, no penalty
     this.lastDock = null; // { systemId, x, y }
+    // Reset objects that could go stale across scene restarts (new game)
+    this._bossLabel = null;
+    this._sealWrecks = null;
     // Recover mid-chain auto quests on load (new game: no-op until level 2)
     this.time.delayedCall(3000, () => this._processAutoQuests());
 
