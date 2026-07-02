@@ -51,6 +51,15 @@ export const SOUND_CONFIGS = {
   inventory_whoosh:    { type: 'sweep', startFreq: 400, endFreq: 200, duration: 0.15, wave: 'sine', vol: 0.06 },
   mining_click:        { type: 'tone', freq: 800, duration: 0.05, wave: 'square', vol: 0.06 },
 
+  // Weapons (v0.7.e.3)
+  cannon_fire:         { type: 'sweep', startFreq: 80, endFreq: 40, duration: 0.15, wave: 'sawtooth', vol: 0.14 },
+  component_pickup:    { type: 'multi', sounds: [
+    { type: 'tone', freq: 523, duration: 0.15, wave: 'sine', vol: 0.09 },
+    { type: 'tone', freq: 659, duration: 0.15, wave: 'sine', vol: 0.09, delay: 0.12 },
+    { type: 'tone', freq: 784, duration: 0.15, wave: 'sine', vol: 0.1, delay: 0.24 },
+    { type: 'tone', freq: 1047, duration: 0.25, wave: 'sine', vol: 0.11, delay: 0.36 },
+  ]},
+
   // Crafting (v0.7.e.1 — full SFX gap fill lands in v0.8.b)
   craft_complete:      { type: 'multi', sounds: [
     { type: 'tone', freq: 523, duration: 0.12, wave: 'sine', vol: 0.1 },

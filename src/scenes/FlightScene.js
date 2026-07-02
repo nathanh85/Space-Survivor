@@ -77,6 +77,8 @@ export default class FlightScene extends Phaser.Scene {
     this.craftedRecipes = [];
     this.shipUpgrades = { hull: 0, shield: 0, engine: 0 };
     this.firstCraftDone = false;
+    this.cannonAmmo = 0;
+    this.maxCannonAmmo = 60;
     this.miningAsteroid = null;
     this.invOpen = false;
     this._selectedInvSlot = null;
@@ -103,6 +105,7 @@ export default class FlightScene extends Phaser.Scene {
 
     // Combat systems
     this.weaponSystem = new WeaponSystem(this);
+    this.weaponSystem.setLoadout(this.ownedWeapons);
     this.enemyManager = new EnemyManager(this);
     this.systemCleared = false; // stops enemy respawns once all cleared
     this.shieldRegenPaused = 0; // timestamp when regen was paused
@@ -384,6 +387,11 @@ export default class FlightScene extends Phaser.Scene {
     this.systemCleared = false;
     this.systemHadEnemies = false;
     this._lootItems = [];
+    // Clear component pickups from previous system
+    if (this._componentPickups) {
+      for (const cp of this._componentPickups) { if (cp.obj) cp.obj.destroy(); }
+    }
+    this._componentPickups = [];
 
     if (!this.systemCache[sysId]) {
       // H3/H4: mark isStarting on sysData before generating so UniverseGenerator can add trading post
@@ -517,6 +525,70 @@ export default class FlightScene extends Phaser.Scene {
       this.perSystemTriggers.add('danger_warned');
       this.time.delayedCall(5000, () => this.fireBark('enter_danger_6plus'));
     }
+
+    // Unique component pickups (v0.7.e.3) — proper layouts land in v0.9.d
+    this._spawnComponentPickups(sysData, sys);
+  }
+
+  // Act 1 component locations: Diamond Aperture @ Ironvale, Bore Assembly @ Scrapyard
+  _spawnComponentPickups(sysData, sys) {
+    const COMPONENT_LOCATIONS = {
+      'Ironvale': 'diamond_aperture',
+      'Scrapyard': 'bore_assembly',
+    };
+    const compId = COMPONENT_LOCATIONS[sysData.name];
+    if (!compId || this.components.includes(compId)) return;
+
+    // Deterministic position: offset from star, seeded per system
+    const rng = new RNG(sysData.seed + 4242);
+    const angle = rng.float(0, Math.PI * 2);
+    const dist = rng.int(900, 1400);
+    const x = sys.star.x + Math.cos(angle) * dist;
+    const y = sys.star.y + Math.sin(angle) * dist;
+
+    const def = ITEMS[compId];
+    const color = Phaser.Display.Color.HexStringToColor(def.color).color;
+    const obj = this.add.container(x, y).setDepth(50);
+    const gfx = this.add.graphics();
+    // Diamond sparkle marker
+    gfx.fillStyle(color, 0.9);
+    gfx.beginPath();
+    gfx.moveTo(0, -10); gfx.lineTo(7, 0); gfx.lineTo(0, 10); gfx.lineTo(-7, 0);
+    gfx.closePath(); gfx.fillPath();
+    gfx.lineStyle(1, 0xffffff, 0.7);
+    gfx.strokeCircle(0, 0, 16);
+    obj.add(gfx);
+    const label = this.add.text(0, 24, def.name, {
+      fontSize: '9px', fontFamily: FONT, color: def.color,
+    }).setOrigin(0.5, 0);
+    obj.add(label);
+    this.tweens.add({ targets: obj, y: y - 8, yoyo: true, repeat: -1, duration: 900, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: gfx, alpha: 0.5, yoyo: true, repeat: -1, duration: 700 });
+
+    this._componentPickups.push({ id: compId, x, y, obj });
+  }
+
+  _updateComponentPickups() {
+    if (!this._componentPickups || this._componentPickups.length === 0) return;
+    for (let i = this._componentPickups.length - 1; i >= 0; i--) {
+      const cp = this._componentPickups[i];
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, cp.x, cp.y);
+      if (dist < 45) {
+        this.components.push(cp.id);
+        cp.obj.destroy();
+        this._componentPickups.splice(i, 1);
+        this.sound_mgr.play('component_pickup');
+        const def = ITEMS[cp.id];
+        const barks = {
+          diamond_aperture: "Pepper: A Diamond Aperture! With this I can crank the laser up to Mk2. Get us to the workbench!",
+          bore_assembly: "Pepper: That's a whole cannon bore assembly! Somebody just LEFT this here? Their loss.",
+        };
+        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+          text: barks[cp.id] || ('Pepper: Got the ' + def.name + '!'),
+        }});
+        this.autoSave();
+      }
+    }
   }
 
   assignResources(asteroids, sysData, planets) {
@@ -566,7 +638,7 @@ export default class FlightScene extends Phaser.Scene {
         maxShield: this.player.maxShield,
         fuel: this.player.fuel,
         credits: this.player.credits,
-        weaponDamage: this.weaponSystem.weapon.damage,
+        weaponDamageBonus: this.weaponSystem.damageBonus,
         xpNext: this.player.xpNext,
       },
       inventory: this.inventory.slots.map(s => s ? { ...s } : null),
@@ -576,6 +648,7 @@ export default class FlightScene extends Phaser.Scene {
         craftedRecipes: [...this.craftedRecipes],
         shipUpgrades: { ...this.shipUpgrades },
         firstCraftDone: this.firstCraftDone,
+        cannonAmmo: this.cannonAmmo,
       },
       universe: {
         galaxySeed: this.galaxySeed,
@@ -612,8 +685,13 @@ export default class FlightScene extends Phaser.Scene {
     this.player.fuel = p.fuel;
     this.player.credits = p.credits || 0;
     this.player.xpNext = p.xpNext || 100;
-    if (p.weaponDamage && this.weaponSystem) {
-      this.weaponSystem.weapon.damage = p.weaponDamage;
+    if (this.weaponSystem) {
+      // New saves store the bonus; legacy saves stored absolute laser damage
+      if (typeof p.weaponDamageBonus === 'number') {
+        this.weaponSystem.damageBonus = p.weaponDamageBonus;
+      } else if (p.weaponDamage) {
+        this.weaponSystem.damageBonus = Math.max(0, p.weaponDamage - 15);
+      }
     }
 
     // Inventory
@@ -630,7 +708,9 @@ export default class FlightScene extends Phaser.Scene {
     this.craftedRecipes = eq.craftedRecipes || [];
     this.shipUpgrades = eq.shipUpgrades || { hull: 0, shield: 0, engine: 0 };
     this.firstCraftDone = !!eq.firstCraftDone;
+    this.cannonAmmo = eq.cannonAmmo || 0;
     this._reapplyUpgradeDerived();
+    this.weaponSystem.setLoadout(this.ownedWeapons);
 
     // Visited systems + fog (hex-based)
     if (u.visitedSystems) {
@@ -1308,6 +1388,7 @@ export default class FlightScene extends Phaser.Scene {
     // Combat
     this.updateCombat(time, delta);
     this.updateLootPickup();
+    this._updateComponentPickups();
 
     // Animated entities
     this.drawAnimatedEntities(time);
@@ -1817,7 +1898,7 @@ export default class FlightScene extends Phaser.Scene {
 
     // Damage boost every 2 levels
     if (this.player.level % 2 === 0) {
-      this.weaponSystem.weapon.damage += 2;
+      this.weaponSystem.damageBonus += 2;
     }
 
     // Sound: ascending chime (440→550→660 Hz)
@@ -1879,10 +1960,27 @@ export default class FlightScene extends Phaser.Scene {
     if (canFire) {
       const gpFiring = !!this._gpRightStickActive;
       if (gpFiring || ptr.leftButtonDown()) {
-        const proj = this.weaponSystem.fire(time, this.player.x, this.player.y, this._aimAngle);
+        const proj = this.weaponSystem.firePrimary(time, this.player.x, this.player.y, this._aimAngle);
         if (proj) {
           this.sound_mgr.playLaser();
           this.lastActivityTime = Date.now();
+        }
+      }
+      // Secondary: cannon on L1 / right mouse button (v0.7.e.3)
+      const padL1 = this.pad && this.pad.L1;
+      if ((padL1 || ptr.rightButtonDown()) && this.weaponSystem.secondary) {
+        if (this.cannonAmmo > 0) {
+          const proj = this.weaponSystem.fireSecondary(time, this.player.x, this.player.y, this._aimAngle);
+          if (proj) {
+            this.cannonAmmo--;
+            this.sound_mgr.play('cannon_fire');
+            this.lastActivityTime = Date.now();
+          }
+        } else if (!this.sessionTriggers.has('cannon_dry')) {
+          this.sessionTriggers.add('cannon_dry');
+          this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+            text: "Pepper: Cannon's dry, Pax. We can refill at a dock or craft more rounds.",
+          }});
         }
       }
     }
@@ -2400,6 +2498,13 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   _launchHubScene() {
+    // Hub dock: free cannon ammo refill (O6)
+    if (this.weaponSystem.secondary && this.cannonAmmo < this.maxCannonAmmo) {
+      this.cannonAmmo = this.maxCannonAmmo;
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: 'Pepper: Topped off the cannon rounds while we docked.',
+      }});
+    }
     this.sound_mgr.stopAll();
     this.scene.pause('FlightScene');
     this.scene.launch('HubScene');
@@ -2648,6 +2753,41 @@ export default class FlightScene extends Phaser.Scene {
       });
       this.tradeObjects.push(buyZone);
     }
+
+    // Cannon ammo row (v0.7.e.3 — O6: costs credits at trading posts)
+    if (this.weaponSystem.secondary) {
+      const ammoPrice = 15, ammoAmount = 20;
+      const ammoY = fuelBuyY + 22;
+      this.tradeObjects.push(this.add.text(px + 16, ammoY, `Cannon Rounds  (+${ammoAmount})`, {
+        fontSize: '9px', fontFamily: FONT, color: '#f39c12',
+      }).setScrollFactor(0).setDepth(701));
+      this.tradeObjects.push(this.add.text(px + 240, ammoY, ammoPrice + ' cr', {
+        fontSize: '9px', fontFamily: FONT, color: '#f1c40f',
+      }).setScrollFactor(0).setDepth(701));
+
+      const ammoFull = this.cannonAmmo >= this.maxCannonAmmo;
+      const canBuyAmmo = (this.player.credits || 0) >= ammoPrice && !ammoFull;
+      const aBg = this.add.graphics().setScrollFactor(0).setDepth(701);
+      aBg.fillStyle(0x2ecc71, canBuyAmmo ? 0.2 : 0.05);
+      aBg.fillRect(px + 320, ammoY - 2, 60, 18);
+      aBg.lineStyle(1, 0x2ecc71, canBuyAmmo ? 0.8 : 0.2);
+      aBg.strokeRect(px + 320, ammoY - 2, 60, 18);
+      this.tradeObjects.push(aBg);
+      this.tradeObjects.push(this.add.text(px + 350, ammoY + 7, ammoFull ? 'FULL' : 'BUY', {
+        fontSize: '8px', fontFamily: FONT, color: canBuyAmmo ? '#2ecc71' : '#555',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(702));
+
+      if (canBuyAmmo) {
+        const aZone = this.add.zone(px + 350, ammoY + 7, 60, 18).setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
+        aZone.on('pointerdown', () => {
+          if ((this.player.credits || 0) < ammoPrice) return;
+          this.player.credits -= ammoPrice;
+          this.cannonAmmo = Math.min(this.maxCannonAmmo, this.cannonAmmo + ammoAmount);
+          this._renderTradeUI();
+        });
+        this.tradeObjects.push(aZone);
+      }
+    }
     // ── END BUY SECTION ───────────────────────────────────────────────────
 
     // Credits total
@@ -2808,8 +2948,12 @@ export default class FlightScene extends Phaser.Scene {
     this.controlsText.setPosition(W - 10, H - 6);
     this.versionText.setPosition(W - 10, H - 18);
 
-    // Combat HUD
-    this.weaponLabel.setText('LASER  DMG:' + this.weaponSystem.getDamage() + '  RNG:' + this.weaponSystem.getRange()).setPosition(10, 102);
+    // Combat HUD — primary weapon + cannon ammo when owned
+    let weaponStr = this.weaponSystem.getWeaponName() + '  DMG:' + this.weaponSystem.getDamage() + '  RNG:' + this.weaponSystem.getRange();
+    if (this.weaponSystem.secondary) {
+      weaponStr += '\nCANNON  ' + this.cannonAmmo + '/' + this.maxCannonAmmo;
+    }
+    this.weaponLabel.setText(weaponStr).setPosition(10, 102);
     const hostiles = this.enemyManager.getEnemyCount();
     if (hostiles > 0) {
       this.hostileLabel.setText('HOSTILES: ' + hostiles).setPosition(W - 10, 140).setOrigin(1, 0).setVisible(true);
@@ -3127,6 +3271,9 @@ export default class FlightScene extends Phaser.Scene {
 
     if (r.type === 'weapon') {
       this.ownedWeapons.push(r.id);
+      this.weaponSystem.setLoadout(this.ownedWeapons);
+      // First cannon comes fully loaded
+      if (r.id === 'cannon_mk1') this.cannonAmmo = this.maxCannonAmmo;
     } else if (r.type === 'upgrade') {
       this.shipUpgrades[r.system] = r.tier;
       this._applyUpgrade(r);
