@@ -85,4 +85,6 @@ export const SOUND_CONFIGS = {
   music_frontier:      { type: 'music', wave: 'triangle', baseFreq: 196, chordPattern: 'minor', bpm: 80, vol: 0.08 },
   music_outer:         { type: 'music', wave: 'sine', baseFreq: 165, chordPattern: 'diminished', bpm: 60, vol: 0.1 },
   music_rift:          { type: 'music', wave: 'sawtooth', baseFreq: 130, chordPattern: 'minor', bpm: 50, vol: 0.1 },
+  // Boss fight track (v0.9.c hooks setMusic('music_boss'))
+  music_boss:          { type: 'music', wave: 'sawtooth', baseFreq: 110, chordPattern: 'diminished', bpm: 100, vol: 0.1 },
 };

@@ -147,6 +147,17 @@ export default class FlightScene extends Phaser.Scene {
       this.openGalaxyMap();
     });
     this.input.keyboard.on('keydown-E', () => { if (dbgBlock() || this.dialogueActive) return; this.tryWarp(); });
+    // N = music mute toggle (v0.8.a — M is taken by the map)
+    this.input.keyboard.on('keydown-N', () => {
+      if (dbgBlock()) return;
+      const muted = this.sound_mgr.toggleMusic();
+      const W = this.cameras.main.width;
+      const toast = this.add.text(W / 2, 130, muted ? 'MUSIC OFF' : 'MUSIC ON', {
+        fontSize: '10px', fontFamily: FONT, color: '#888888',
+        backgroundColor: 'rgba(0,0,0,0.7)', padding: { x: 10, y: 5 },
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(850);
+      this.tweens.add({ targets: toast, alpha: 0, duration: 400, delay: 900, onComplete: () => toast.destroy() });
+    });
     this.input.keyboard.on('keydown-F', () => { if (dbgBlock() || this.dialogueActive) return; this.tryDockOrLand(); });
     this.input.keyboard.on('keydown-TAB', (e) => { e.preventDefault(); if (dbgBlock() || this.dialogueActive) return; this.toggleInventory(); });
     this.input.keyboard.on('keydown-I', () => { if (dbgBlock() || this.dialogueActive) return; this.toggleInventory(); });
