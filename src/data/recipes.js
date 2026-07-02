@@ -15,14 +15,16 @@ export const RECIPES = [
     id: 'laser_mk2', name: 'Laser Mk2', category: 'weapons',
     result: { type: 'weapon', id: 'laser_mk2' },
     component: 'diamond_aperture', requires: null,
-    materials: { titanium: 10, plasma: 6, iron: 8 },
+    // v0.10.b: trimmed — pre-Mk2 titanium/plasma comes from trickle drops,
+    // enemy kills, and Grix's stock, so the old 10/6 cost was a grind wall
+    materials: { titanium: 6, plasma: 4, iron: 8 },
     description: "Twice the punch, cracks T2 rock. Needs the Diamond Aperture.",
   },
   {
     id: 'cannon_mk1', name: 'Cannon Mk1', category: 'weapons',
     result: { type: 'weapon', id: 'cannon_mk1' },
     component: 'bore_assembly', requires: null,
-    materials: { titanium: 12, plasma: 8, carbon: 6 },
+    materials: { titanium: 8, plasma: 6, carbon: 6 },
     description: "Slow, heavy, satisfying. Cracks T3 rock. Needs the Bore Assembly.",
   },
 

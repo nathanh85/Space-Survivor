@@ -3188,7 +3188,7 @@ export default class FlightScene extends Phaser.Scene {
 
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
-    const pw = 420, ph = 420;
+    const pw = 420, ph = 480; // v0.10.b: taller for merchant BUY rows
     const px = W / 2 - pw / 2, py = H / 2 - ph / 2;
 
     // Background
@@ -3270,54 +3270,58 @@ export default class FlightScene extends Phaser.Scene {
       }
     }
 
-    // ── BUY SECTION (B23) ──────────────────────────────────────────────────
-    const buyHeaderY = py + ph - 150;
+    // ── BUY SECTION (B23; v0.10.b: merchant inventory drives the rows) ─────
+    const buyHeaderY = py + ph - 196;
     const buyHdr = this.add.text(px + 16, buyHeaderY, '— BUY —', {
       fontSize: '9px', fontFamily: FONT, color: '#2ecc71', fontStyle: 'bold',
     }).setScrollFactor(0).setDepth(701);
     this.tradeObjects.push(buyHdr);
 
-    // Fuel row
-    const fuelPrice = 10;
-    const fuelBuyY = buyHeaderY + 18;
-    const fuelNameT = this.add.text(px + 16, fuelBuyY, 'Hydrogen Fuel  (+20 fuel)', {
-      fontSize: '9px', fontFamily: FONT, color: '#87CEEB',
-    }).setScrollFactor(0).setDepth(701);
-    this.tradeObjects.push(fuelNameT);
+    // Rows: everything the merchant stocks (fuel always available).
+    // Prices are 1.5x base value — selling back is at 1.0x.
+    const stock = (this._tradeNpc && this._tradeNpc.inventory) || ['fuel'];
+    let buyY = buyHeaderY + 18;
+    for (const itemId of stock) {
+      const def = getItemDef(itemId);
+      if (!def) continue;
+      const price = Math.max(5, Math.ceil(def.value * 1.5));
+      const label = itemId === 'fuel' ? 'Hydrogen Fuel  (+20 fuel)' : def.name;
+      this.tradeObjects.push(this.add.text(px + 16, buyY, label, {
+        fontSize: '9px', fontFamily: FONT, color: def.tier ? def.tier.color : def.color,
+      }).setScrollFactor(0).setDepth(701));
+      this.tradeObjects.push(this.add.text(px + 240, buyY, price + ' cr', {
+        fontSize: '9px', fontFamily: FONT, color: '#f1c40f',
+      }).setScrollFactor(0).setDepth(701));
 
-    const fuelPriceT = this.add.text(px + 240, fuelBuyY, fuelPrice + ' cr', {
-      fontSize: '9px', fontFamily: FONT, color: '#f1c40f',
-    }).setScrollFactor(0).setDepth(701);
-    this.tradeObjects.push(fuelPriceT);
+      const canAfford = (this.player.credits || 0) >= price;
+      const bBg = this.add.graphics().setScrollFactor(0).setDepth(701);
+      bBg.fillStyle(0x2ecc71, canAfford ? 0.2 : 0.05);
+      bBg.fillRect(px + 320, buyY - 2, 60, 18);
+      bBg.lineStyle(1, 0x2ecc71, canAfford ? 0.8 : 0.2);
+      bBg.strokeRect(px + 320, buyY - 2, 60, 18);
+      this.tradeObjects.push(bBg);
+      this.tradeObjects.push(this.add.text(px + 350, buyY + 7, 'BUY', {
+        fontSize: '8px', fontFamily: FONT, color: canAfford ? '#2ecc71' : '#555',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(702));
 
-    const canAfford = (this.player.credits || 0) >= fuelPrice;
-    const buyBg = this.add.graphics().setScrollFactor(0).setDepth(701);
-    buyBg.fillStyle(0x2ecc71, canAfford ? 0.2 : 0.05);
-    buyBg.fillRect(px + 320, fuelBuyY - 2, 60, 18);
-    buyBg.lineStyle(1, 0x2ecc71, canAfford ? 0.8 : 0.2);
-    buyBg.strokeRect(px + 320, fuelBuyY - 2, 60, 18);
-    this.tradeObjects.push(buyBg);
-
-    const buyText = this.add.text(px + 350, fuelBuyY + 7, 'BUY', {
-      fontSize: '8px', fontFamily: FONT, color: canAfford ? '#2ecc71' : '#555',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(702);
-    this.tradeObjects.push(buyText);
-
-    if (canAfford) {
-      const buyZone = this.add.zone(px + 350, fuelBuyY + 7, 60, 18).setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
-      buyZone.on('pointerdown', () => {
-        if ((this.player.credits || 0) < fuelPrice) return;
-        this.player.credits -= fuelPrice;
-        this.inventory.addItem('fuel', 1);
-        this._renderTradeUI(); // refresh
-      });
-      this.tradeObjects.push(buyZone);
+      if (canAfford) {
+        const capturedId = itemId, capturedPrice = price;
+        const bZone = this.add.zone(px + 350, buyY + 7, 60, 18).setScrollFactor(0).setDepth(703).setInteractive({ useHandCursor: true });
+        bZone.on('pointerdown', () => {
+          if ((this.player.credits || 0) < capturedPrice) return;
+          this.player.credits -= capturedPrice;
+          this.inventory.addItem(capturedId, 1);
+          this._renderTradeUI(); // refresh
+        });
+        this.tradeObjects.push(bZone);
+      }
+      buyY += 22;
     }
 
     // Cannon ammo row (v0.7.e.3 — O6: costs credits at trading posts)
     if (this.weaponSystem.secondary) {
       const ammoPrice = 15, ammoAmount = 20;
-      const ammoY = fuelBuyY + 22;
+      const ammoY = buyY;
       this.tradeObjects.push(this.add.text(px + 16, ammoY, `Cannon Rounds  (+${ammoAmount})`, {
         fontSize: '9px', fontFamily: FONT, color: '#f39c12',
       }).setScrollFactor(0).setDepth(701));

@@ -11,6 +11,9 @@ export const ASTEROID_CONFIGS = {
     drops: [
       { id: 'iron', chance: 0.70, amount: [2, 4] },
       { id: 'carbon', chance: 0.20, amount: [1, 2] },
+      // v0.10.b: T2 trickle pre-Mk2 (mirrors ice_t1's cryo drop) — keeps
+      // the Laser Mk2 recipe reachable before T2 rocks are crackable
+      { id: 'titanium', chance: 0.08, amount: [1, 1] },
     ],
     sounds: { hit: 'asteroid_hit_rock', break: 'asteroid_break_rock' },
     mineRequires: null,
@@ -23,6 +26,7 @@ export const ASTEROID_CONFIGS = {
     drops: [
       { id: 'carbon', chance: 0.70, amount: [2, 4] },
       { id: 'iron', chance: 0.20, amount: [1, 2] },
+      { id: 'plasma', chance: 0.06, amount: [1, 1] }, // v0.10.b T2 trickle
     ],
     sounds: { hit: 'asteroid_hit_rock', break: 'asteroid_break_dark' },
     mineRequires: null,

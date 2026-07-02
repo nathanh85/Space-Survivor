@@ -12,7 +12,8 @@ export const NPCS = [
       noMoney: "Credits first, window shoppin' second. I got mouths to feed! ...Just mine, but still.",
       secondVisit: "You two again! Business must be boomin'. Or you're broke. Either way, welcome!",
     },
-    inventory: ['iron', 'carbon', 'fuel', 'titanium'],
+    // v0.10.b: + plasma so every Laser Mk2 ingredient has a purchase path
+    inventory: ['iron', 'carbon', 'fuel', 'titanium', 'plasma'],
     priceModifier: 1.0,
   },
   {
