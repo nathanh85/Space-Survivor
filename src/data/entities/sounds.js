@@ -73,6 +73,23 @@ export const SOUND_CONFIGS = {
     { type: 'tone', freq: 784, duration: 0.2, wave: 'sine', vol: 0.12, delay: 0.2 },
   ]},
 
+  // Quest + boss stingers (v0.8.b)
+  quest_complete:      { type: 'multi', sounds: [
+    { type: 'tone', freq: 392, duration: 0.12, wave: 'square', vol: 0.08 },
+    { type: 'tone', freq: 523, duration: 0.12, wave: 'square', vol: 0.08, delay: 0.11 },
+    { type: 'tone', freq: 659, duration: 0.12, wave: 'square', vol: 0.09, delay: 0.22 },
+    { type: 'tone', freq: 784, duration: 0.14, wave: 'square', vol: 0.1, delay: 0.33 },
+    { type: 'tone', freq: 1047, duration: 0.3, wave: 'square', vol: 0.11, delay: 0.46 },
+  ]},
+  boss_phase:          { type: 'sweep', startFreq: 55, endFreq: 220, duration: 1.0, wave: 'sawtooth', vol: 0.12 },
+  boss_defeat:         { type: 'multi', sounds: [
+    { type: 'tone', freq: 440, duration: 0.2, wave: 'sawtooth', vol: 0.1 },
+    { type: 'tone', freq: 349, duration: 0.2, wave: 'sawtooth', vol: 0.1, delay: 0.18 },
+    { type: 'tone', freq: 262, duration: 0.2, wave: 'sawtooth', vol: 0.1, delay: 0.36 },
+    { type: 'tone', freq: 175, duration: 0.4, wave: 'sawtooth', vol: 0.11, delay: 0.54 },
+    { type: 'noise', duration: 0.6, vol: 0.1, delay: 0.7 },
+  ]},
+
   // Transmissions
   transmission_static: { type: 'noise', duration: 0.3, vol: 0.05 },
   mother_hum:          { type: 'multi', sounds: [

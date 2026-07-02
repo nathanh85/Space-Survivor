@@ -3415,6 +3415,8 @@ export default class FlightScene extends Phaser.Scene {
     if (rewards.fuel) receivedParts.push('+' + rewards.fuel + ' Fuel');
     if (receivedParts.length === 0) return;
 
+    this.sound_mgr.play('quest_complete');
+
     let lines = 'QUEST COMPLETE!';
     if (deliveredObjs.length > 0) {
       const delParts = deliveredObjs
