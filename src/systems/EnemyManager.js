@@ -3,7 +3,7 @@
 // ============================================================
 
 import Enemy from '../entities/Enemy.js';
-import { TIN_BADGE, SCOUT, SPAWN_CONFIG, pickRankForDanger } from '../data/enemies.js';
+import { TIN_BADGE, SPAWN_CONFIG, ENEMY_TYPE_MAP, pickRankForDanger } from '../data/enemies.js';
 
 export default class EnemyManager {
   constructor(scene) {
@@ -56,18 +56,22 @@ export default class EnemyManager {
     // Bounds check
     if (sx < 100 || sx > 4700 || sy < 100 || sy > 3500) return;
 
-    // H2: Enemy type selection by danger level
-    let enemyType = TIN_BADGE;
-    if (danger >= 5 && danger <= 6) {
-      // 25% chance of Scout, 75% Tin Badge
-      enemyType = (Math.random() < 0.25 && SCOUT) ? SCOUT : TIN_BADGE;
-    } else if (danger >= 7 && danger <= 8) {
-      // 50/50 mixed
-      enemyType = (Math.random() < 0.5 && SCOUT) ? SCOUT : TIN_BADGE;
-    } else if (danger >= 9) {
-      // 60% Scout, 40% Tin Badge
-      enemyType = (Math.random() < 0.6 && SCOUT) ? SCOUT : TIN_BADGE;
+    // v0.7.g.3: type from zone pool, danger-gated (stinger D4+, enforcer D5+).
+    // Weighting via repetition: tin_badge x3, scout x2, stinger x2, enforcer x1.
+    const zonePool = (this.scene.currentSystem && this.scene.currentSystem.zoneConfig
+      && this.scene.currentSystem.zoneConfig.enemies
+      && this.scene.currentSystem.zoneConfig.enemies.pool) || ['tin_badge'];
+    const WEIGHTS = { tin_badge: 3, scout: 2, stinger: 2, enforcer: 1 };
+    const MIN_DANGER = { stinger: 4, enforcer: 5 };
+    const weighted = [];
+    for (const id of zonePool) {
+      if (!ENEMY_TYPE_MAP[id]) continue;
+      if (MIN_DANGER[id] && danger < MIN_DANGER[id]) continue;
+      for (let i = 0; i < (WEIGHTS[id] || 1); i++) weighted.push(id);
     }
+    const typeId = weighted.length > 0
+      ? weighted[Math.floor(Math.random() * weighted.length)] : 'tin_badge';
+    const enemyType = ENEMY_TYPE_MAP[typeId] || TIN_BADGE;
 
     // v0.7.g.1: rank by danger (E3 weights)
     this.spawnEnemy(sx, sy, enemyType, pickRankForDanger(danger));

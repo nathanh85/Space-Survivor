@@ -21,7 +21,7 @@ export const ZONE_TEMPLATES = {
       count: { min: 20, max: 30 },
     },
     enemies: {
-      pool: ['tin_badge', 'scout'],
+      pool: ['tin_badge', 'scout', 'stinger'],
       count: { min: 2, max: 5 },
       rankWeights: { standard_0: 0.6, standard_1: 0.3, standard_2: 0.1 },
       respawnTime: 90000,
@@ -39,7 +39,7 @@ export const ZONE_TEMPLATES = {
       count: { min: 15, max: 25 },
     },
     enemies: {
-      pool: ['tin_badge', 'scout'],
+      pool: ['tin_badge', 'scout', 'enforcer', 'stinger'],
       count: { min: 4, max: 7 },
       rankWeights: { standard_1: 0.3, standard_2: 0.3, veteran_0: 0.3, veteran_1: 0.1 },
       respawnTime: 90000,
@@ -58,7 +58,7 @@ export const ZONE_TEMPLATES = {
       count: { min: 10, max: 20 },
     },
     enemies: {
-      pool: ['tin_badge', 'scout'],
+      pool: ['tin_badge', 'scout', 'enforcer', 'stinger'],
       count: { min: 6, max: 10 },
       rankWeights: { veteran_1: 0.3, veteran_2: 0.3, elite_0: 0.3, elite_1: 0.1 },
       respawnTime: 60000,

@@ -28,6 +28,8 @@ export default class Enemy {
     } : config.loot;
     this.xp = Math.round((config.xp || 10) * hpMult);
     this.alive = true;
+    this.configId = config.id || 'tin_badge';
+    this.retreatUntil = 0; // stinger post-dive retreat timer
     this.angle = 0;
     this.distantTime = 0; // time spent far from player
 
@@ -144,6 +146,28 @@ export default class Enemy {
     const dx = px - this.x;
     const dy = py - this.y;
     const dist = Math.hypot(dx, dy);
+
+    // Stinger (v0.7.g.3): melee dive — charge in, hit on contact, retreat, repeat
+    if (this.config.melee) {
+      if (time < this.retreatUntil) {
+        // Retreat away from player at full speed
+        this.angle = Math.atan2(-dy, -dx);
+        this.x += (-dx / dist) * this.speed * dt;
+        this.y += (-dy / dist) * this.speed * dt;
+        return;
+      }
+      this.angle = Math.atan2(dy, dx);
+      const spd = this.speed * 1.25 * dt; // dive burst
+      this.x += (dx / dist) * spd;
+      this.y += (dy / dist) * spd;
+      if (dist < 24 && time - this.lastFired > this.fireRate) {
+        this.lastFired = time;
+        this.retreatUntil = time + 900;
+        if (this.scene.playerTakeDamage) this.scene.playerTakeDamage(this.damage);
+      }
+      return;
+    }
+
     this.angle = Math.atan2(dy, dx);
 
     // Close slowly
@@ -161,7 +185,17 @@ export default class Enemy {
   }
 
   fireProjectile(px, py, group) {
-    const angle = Math.atan2(py - this.y, px - this.x);
+    const baseAngle = Math.atan2(py - this.y, px - this.x);
+    // Enforcer (v0.7.g.3): pellets spread evenly around the aim line
+    const pellets = this.config.pellets || 1;
+    const spread = this.config.spreadRad || 0;
+    for (let i = 0; i < pellets; i++) {
+      const offset = pellets > 1 ? (i / (pellets - 1) - 0.5) * spread * 2 : 0;
+      this._fireOne(baseAngle + offset, group);
+    }
+  }
+
+  _fireOne(angle, group) {
     const proj = this.scene.add.rectangle(
       this.x + Math.cos(angle) * 10,
       this.y + Math.sin(angle) * 10,
