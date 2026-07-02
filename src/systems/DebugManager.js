@@ -5,6 +5,8 @@
 
 import { FONT } from '../config/constants.js';
 import { RESOURCES } from '../data/resources.js';
+import { ITEMS } from '../data/items.js';
+import { RECIPES, getRecipe } from '../data/recipes.js';
 
 const PANEL_W = 290;
 const PANEL_X = 4;
@@ -243,8 +245,40 @@ export default class DebugManager {
       this.infiniteFuel = !this.infiniteFuel;
       this._updateBadge();
       result = `Infinite fuel: ${this.infiniteFuel ? 'ON' : 'OFF'}`;
+    } else if (action === 'craft') {
+      // v0.7.e.1: craft <recipeId>
+      const res = this.scene.craftRecipe(parts[1]);
+      result = res.message;
+    } else if (action === 'recipes') {
+      result = RECIPES.map(r => r.id).join(' ');
+    } else if (action === 'component') {
+      // component <id>|all — grant unique components for testing
+      const id = parts[1];
+      if (id === 'all') {
+        for (const key of Object.keys(ITEMS)) {
+          if (ITEMS[key].type === 'component' && !this.scene.components.includes(key)) {
+            this.scene.components.push(key);
+          }
+        }
+        result = 'Components: ' + this.scene.components.join(', ');
+      } else if (ITEMS[id] && ITEMS[id].type === 'component') {
+        if (!this.scene.components.includes(id)) this.scene.components.push(id);
+        result = '+component ' + id;
+      } else {
+        result = 'Unknown component: ' + id;
+      }
+    } else if (action === 'item') {
+      // item <id> [n] — add any items.js item to inventory
+      const id = parts[1];
+      const amount = parseInt(parts[2]) || 1;
+      if (ITEMS[id]) {
+        const added = this.scene.inventory.addItem(id, amount);
+        result = `+${added} ${ITEMS[id].name}`;
+      } else {
+        result = 'Unknown item: ' + id;
+      }
     } else if (action === 'help') {
-      result = 'give/credits/fuel/hull/shield/fill/tp/god/infuel';
+      result = 'give/item/craft/recipes/component/credits/fuel/hull/shield/fill/tp/god/infuel';
     } else {
       result = `Unknown: ${action}. Type "help"`;
     }

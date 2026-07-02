@@ -19,8 +19,7 @@ export default class TitleScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#050510');
 
     // Check save compatibility — old saves (pre v0.7.b) are incompatible with hex universe
-    const saveVersion = SaveManager.getSaveVersion();
-    const hasSave = SaveManager.hasSave() && saveVersion && saveVersion >= 'v0.7.b';
+    const hasSave = SaveManager.isCompatible(SaveManager.load());
 
     // Background stars
     const gfx = this.add.graphics();

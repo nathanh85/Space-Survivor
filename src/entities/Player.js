@@ -22,6 +22,7 @@ export default class Player extends Phaser.GameObjects.Container {
     this.xpNext = PLAYER_DEFAULTS.xpNext;
     this.level = 1;
     this.credits = 500;
+    this.speedMult = 1; // engine upgrade multiplier (v0.7.e.1)
 
     // Twin-stick state
     this.aimAngle = 0;      // radians — aim direction (mouse / right stick)
@@ -75,7 +76,7 @@ export default class Player extends Phaser.GameObjects.Container {
    * @param {boolean} isAiming  true when right stick or mouse is actively aiming
    */
   update(moveX, moveY, aimAngle, isAiming) {
-    const speed = PLAYER_DEFAULTS.moveSpeed;
+    const speed = PLAYER_DEFAULTS.moveSpeed * (this.speedMult || 1);
 
     if (moveX !== 0 || moveY !== 0) {
       const mag = Math.hypot(moveX, moveY);

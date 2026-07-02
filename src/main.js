@@ -36,4 +36,5 @@ const config = {
   },
 };
 
-new Phaser.Game(config);
+// Exposed for debug console + automated QA
+window.game = new Phaser.Game(config);

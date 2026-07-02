@@ -1,8 +1,9 @@
 // ============================================================
 // Inventory System — grid-based inventory with stacking
+// v0.7.e.1: items.js unified lookup (resources + items) + craft()
 // ============================================================
 
-import { RESOURCES } from '../data/resources.js';
+import { getItemDef } from '../data/items.js';
 
 const MAX_SLOTS = 30; // 6 columns x 5 rows
 
@@ -15,7 +16,7 @@ export default class InventorySystem {
 
   // Add items to inventory. Returns amount actually added.
   addItem(resourceId, amount = 1) {
-    const res = RESOURCES[resourceId];
+    const res = getItemDef(resourceId);
     if (!res) return 0;
 
     let remaining = amount;
@@ -93,8 +94,46 @@ export default class InventorySystem {
   isFull() {
     for (const slot of this.slots) {
       if (!slot) return false;
-      const res = RESOURCES[slot.resourceId];
+      const res = getItemDef(slot.resourceId);
       if (res && slot.count < res.maxStack) return false;
+    }
+    return true;
+  }
+
+  // ========== CRAFTING (v0.7.e.1) ==========
+
+  /**
+   * Check whether a recipe can be crafted.
+   * @param {object} recipe — from recipes.js
+   * @param {object} ctx — { components: string[], craftedRecipes: string[] }
+   * @returns {{ok: boolean, missing: string[]}}
+   */
+  canCraft(recipe, ctx = {}) {
+    const missing = [];
+    if (!recipe) return { ok: false, missing: ['unknown recipe'] };
+
+    if (recipe.component && !(ctx.components || []).includes(recipe.component)) {
+      missing.push('component: ' + recipe.component);
+    }
+    if (recipe.requires && !(ctx.craftedRecipes || []).includes(recipe.requires)) {
+      missing.push('requires: ' + recipe.requires);
+    }
+    for (const [matId, need] of Object.entries(recipe.materials || {})) {
+      const have = this.countItem(matId);
+      if (have < need) missing.push(`${matId}: ${have}/${need}`);
+    }
+    return { ok: missing.length === 0, missing };
+  }
+
+  /**
+   * Consume a recipe's materials. Caller must have checked canCraft
+   * and is responsible for granting the result.
+   * @returns {boolean} true if materials were consumed
+   */
+  consumeMaterials(recipe, ctx = {}) {
+    if (!this.canCraft(recipe, ctx).ok) return false;
+    for (const [matId, need] of Object.entries(recipe.materials || {})) {
+      this.removeItem(matId, need);
     }
     return true;
   }

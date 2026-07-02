@@ -51,6 +51,13 @@ export const SOUND_CONFIGS = {
   inventory_whoosh:    { type: 'sweep', startFreq: 400, endFreq: 200, duration: 0.15, wave: 'sine', vol: 0.06 },
   mining_click:        { type: 'tone', freq: 800, duration: 0.05, wave: 'square', vol: 0.06 },
 
+  // Crafting (v0.7.e.1 — full SFX gap fill lands in v0.8.b)
+  craft_complete:      { type: 'multi', sounds: [
+    { type: 'tone', freq: 523, duration: 0.12, wave: 'sine', vol: 0.1 },
+    { type: 'tone', freq: 659, duration: 0.12, wave: 'sine', vol: 0.1, delay: 0.1 },
+    { type: 'tone', freq: 784, duration: 0.2, wave: 'sine', vol: 0.12, delay: 0.2 },
+  ]},
+
   // Transmissions
   transmission_static: { type: 'noise', duration: 0.3, vol: 0.05 },
   mother_hum:          { type: 'multi', sounds: [

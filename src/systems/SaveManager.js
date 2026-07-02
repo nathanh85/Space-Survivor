@@ -44,6 +44,15 @@ const SaveManager = {
     return save ? save.version : null;
   },
 
+  // v0.7.e.1: single source of truth for save compatibility.
+  // format >= 2 saves are always compatible; older saves fall back to the
+  // legacy string check (only valid for v0.7.b–v0.7.d era versions).
+  isCompatible(save) {
+    if (!save) return false;
+    if (typeof save.format === 'number') return save.format >= 2;
+    return !!save.version && save.version >= 'v0.7.b' && save.version < 'v0.8';
+  },
+
   exportSave() {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return;

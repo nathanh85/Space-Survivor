@@ -9,6 +9,8 @@ import { checkWarpLock } from '../data/zones/portalLocks.js';
 import Player from '../entities/Player.js';
 import InventorySystem from '../systems/InventorySystem.js';
 import { RESOURCES, getAvailableResources } from '../data/resources.js';
+import { getItemDef, ITEMS } from '../data/items.js';
+import { getRecipe } from '../data/recipes.js';
 import { RNG } from '../config/constants.js';
 import { STORY_BEATS, getStoryBeat } from '../data/story.js';
 import { getBarksByTrigger, getRandomBark } from '../data/barks.js';
@@ -69,6 +71,12 @@ export default class FlightScene extends Phaser.Scene {
     this.nearStation = null;
     this.nearPlanetZion = false;
     this.inventory = new InventorySystem();
+    // Equipment state (v0.7.e.1) — weapons owned, unique components, ship upgrade tiers
+    this.ownedWeapons = ['laser_mk1'];
+    this.components = [];
+    this.craftedRecipes = [];
+    this.shipUpgrades = { hull: 0, shield: 0, engine: 0 };
+    this.firstCraftDone = false;
     this.miningAsteroid = null;
     this.invOpen = false;
     this._selectedInvSlot = null;
@@ -310,7 +318,7 @@ export default class FlightScene extends Phaser.Scene {
     if (this._initData && this._initData.fromSave) {
       const save = SaveManager.load();
       // v0.7.b: check save compatibility — old saves use sys_X_Y IDs, new uses hex_Q_R
-      if (save && save.version && save.version >= 'v0.7.b') {
+      if (SaveManager.isCompatible(save)) {
         this.restoreFromSave(save);
       } else {
         // Incompatible save — start fresh
@@ -544,7 +552,10 @@ export default class FlightScene extends Phaser.Scene {
 
   buildSaveState() {
     return {
-      version: 'v0.7.d',
+      version: BUILD_VERSION,
+      // Numeric save-format version — string compares on `version` break at
+      // v0.10 ('v0.10' < 'v0.7' lexicographically). Bump only on breaking changes.
+      format: 2,
       timestamp: Date.now(),
       player: {
         level: this.player.level,
@@ -559,6 +570,13 @@ export default class FlightScene extends Phaser.Scene {
         xpNext: this.player.xpNext,
       },
       inventory: this.inventory.slots.map(s => s ? { ...s } : null),
+      equipment: {
+        ownedWeapons: [...this.ownedWeapons],
+        components: [...this.components],
+        craftedRecipes: [...this.craftedRecipes],
+        shipUpgrades: { ...this.shipUpgrades },
+        firstCraftDone: this.firstCraftDone,
+      },
       universe: {
         galaxySeed: this.galaxySeed,
         currentSystem: this.currentSystemId,
@@ -604,6 +622,15 @@ export default class FlightScene extends Phaser.Scene {
         this.inventory.slots[i] = saveData.inventory[i] ? { ...saveData.inventory[i] } : null;
       }
     }
+
+    // Equipment (v0.7.e.1) — older saves default to starting loadout
+    const eq = saveData.equipment || {};
+    this.ownedWeapons = eq.ownedWeapons || ['laser_mk1'];
+    this.components = eq.components || [];
+    this.craftedRecipes = eq.craftedRecipes || [];
+    this.shipUpgrades = eq.shipUpgrades || { hull: 0, shield: 0, engine: 0 };
+    this.firstCraftDone = !!eq.firstCraftDone;
+    this._reapplyUpgradeDerived();
 
     // Visited systems + fog (hex-based)
     if (u.visitedSystems) {
@@ -2062,7 +2089,7 @@ export default class FlightScene extends Phaser.Scene {
           label = '+' + item._lootAmount + ' Credits';
         } else {
           this.inventory.addItem(item._lootType, item._lootAmount);
-          const res = RESOURCES[item._lootType];
+          const res = getItemDef(item._lootType);
           label = '+' + item._lootAmount + ' ' + (res ? res.name : item._lootType);
           // Quest progress: collect_resource
           const qReady = this.questManager.updateProgress('collect_resource', { resource: item._lootType, amount: item._lootAmount });
@@ -2531,12 +2558,12 @@ export default class FlightScene extends Phaser.Scene {
       this.tradeObjects.push(empty);
     } else {
       for (const [resId, qty] of entries) {
-        const res = RESOURCES[resId];
-        if (!res) continue;
+        const res = getItemDef(resId);
+        if (!res || res.sellable === false || !res.value) continue;
         const totalVal = res.value * qty;
 
         const nameText = this.add.text(px + 16, y, res.name, {
-          fontSize: '9px', fontFamily: FONT, color: res.tier.color,
+          fontSize: '9px', fontFamily: FONT, color: res.tier ? res.tier.color : res.color,
         }).setScrollFactor(0).setDepth(701);
         this.tradeObjects.push(nameText);
 
@@ -2673,8 +2700,8 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   _sellResource(resourceId, amount) {
-    const res = RESOURCES[resourceId];
-    if (!res) return;
+    const res = getItemDef(resourceId);
+    if (!res || res.sellable === false || !res.value) return;
     const qty = this.inventory.countItem(resourceId);
     if (qty <= 0) return;
     const sellQty = Math.min(amount || 1, qty);
@@ -2704,8 +2731,8 @@ export default class FlightScene extends Phaser.Scene {
     const toSell = [];
     for (const slot of this.inventory.slots) {
       if (!slot) continue;
-      const res = RESOURCES[slot.resourceId];
-      if (!res) continue;
+      const res = getItemDef(slot.resourceId);
+      if (!res || res.sellable === false || !res.value) continue;
       toSell.push({ id: slot.resourceId, qty: slot.count, val: res.value * slot.count });
       totalValue += res.value * slot.count;
     }
@@ -2911,7 +2938,7 @@ export default class FlightScene extends Phaser.Scene {
       this._invSlots.push({ x: sx, y: sy, w: cs, h: cs, index: i });
 
       if (slot) {
-        const res = RESOURCES[slot.resourceId];
+        const res = getItemDef(slot.resourceId);
         if (res) {
           const rc = Phaser.Display.Color.HexStringToColor(res.color).color;
           g.lineStyle(isSelected ? 2 : 1.5, rc, isSelected ? 1 : 0.8);
@@ -2928,18 +2955,20 @@ export default class FlightScene extends Phaser.Scene {
     if (this._selectedInvSlot != null) {
       const slot = this.inventory.slots[this._selectedInvSlot];
       if (slot) {
-        const res = RESOURCES[slot.resourceId];
+        const res = getItemDef(slot.resourceId);
         if (res) {
           const dpx = ox + tw + 8, dpy = oy;
           const dpw = 180, dph = 120;
           g.fillStyle(0x0a0a1a, 0.95); g.fillRect(dpx, dpy, dpw, dph);
-          const rc = Phaser.Display.Color.HexStringToColor(res.tier.color).color;
+          const tierColor = res.tier ? res.tier.color : res.color;
+          const tierName = res.tier ? res.tier.name : (res.type || 'Item');
+          const rc = Phaser.Display.Color.HexStringToColor(tierColor).color;
           g.lineStyle(1.5, rc, 0.6); g.strokeRect(dpx, dpy, dpw, dph);
 
           this.invTexts.push(this.add.text(dpx + 10, dpy + 10, res.name, {
-            fontSize: '10px', fontFamily: FONT, color: res.tier.color, fontStyle: 'bold',
+            fontSize: '10px', fontFamily: FONT, color: tierColor, fontStyle: 'bold',
           }).setScrollFactor(0).setDepth(601));
-          this.invTexts.push(this.add.text(dpx + 10, dpy + 26, res.tier.name, {
+          this.invTexts.push(this.add.text(dpx + 10, dpy + 26, tierName, {
             fontSize: '7px', fontFamily: FONT, color: '#888',
           }).setScrollFactor(0).setDepth(601));
           this.invTexts.push(this.add.text(dpx + 10, dpy + 42, res.description, {
@@ -2953,19 +2982,20 @@ export default class FlightScene extends Phaser.Scene {
             fontSize: '8px', fontFamily: FONT, color: '#f1c40f',
           }).setOrigin(1, 0).setScrollFactor(0).setDepth(601));
 
-          // B24: USE button for usable items (fuel)
-          if (slot.resourceId === 'fuel') {
+          // B24/v0.7.e.1: USE button for usable items (fuel + consumables)
+          const useLabel = this._consumableLabel(slot.resourceId);
+          if (useLabel) {
             g.fillStyle(0x2ecc71, 0.2);
             g.fillRect(dpx + 10, dpy + dph - 44, dpw - 20, 20);
             g.lineStyle(1, 0x2ecc71, 0.7);
             g.strokeRect(dpx + 10, dpy + dph - 44, dpw - 20, 20);
-            this.invTexts.push(this.add.text(dpx + dpw / 2, dpy + dph - 34, 'USE  (+20 Fuel)', {
+            this.invTexts.push(this.add.text(dpx + dpw / 2, dpy + dph - 34, useLabel, {
               fontSize: '8px', fontFamily: FONT, color: '#2ecc71',
             }).setOrigin(0.5).setScrollFactor(0).setDepth(602));
             const useZone = this.add.zone(dpx + dpw / 2, dpy + dph - 34, dpw - 20, 20)
               .setScrollFactor(0).setDepth(603).setInteractive({ useHandCursor: true });
             useZone.on('pointerdown', () => {
-              this._useFuelFromInventory(this._selectedInvSlot);
+              this._useConsumableFromInventory(this._selectedInvSlot);
             });
             this.invTexts.push(useZone);
           }
@@ -2993,51 +3023,151 @@ export default class FlightScene extends Phaser.Scene {
     if (!clicked) this._selectedInvSlot = null;
   }
 
-  // B16: Right-click an inventory item to use it (fuel only for now)
+  // B16: Right-click an inventory item to use it
   handleInvRightClick(pointer) {
     if (!this.invOpen || !this._invSlots) return;
     const mx = pointer.x, my = pointer.y;
     for (const s of this._invSlots) {
       if (mx >= s.x && mx <= s.x + s.w && my >= s.y && my <= s.y + s.h) {
         const slot = this.inventory.slots[s.index];
-        if (slot && slot.resourceId === 'fuel') {
-          this._useFuelFromInventory(s.index);
+        if (slot && this._consumableLabel(slot.resourceId)) {
+          this._useConsumableFromInventory(s.index);
         }
         break;
       }
     }
   }
 
-  // H6: Use one unit of fuel from inventory, adds +20 fuel
-  _useFuelFromInventory(slotIndex) {
+  // Returns a USE button label for usable items, or null if not usable
+  _consumableLabel(itemId) {
+    if (itemId === 'fuel') return 'USE  (+20 Fuel)';
+    const def = ITEMS[itemId];
+    if (def && def.use) {
+      const statLabel = def.use.stat === 'hull' ? 'Hull' : def.use.stat === 'fuel' ? 'Fuel' : def.use.stat;
+      return `USE  (+${def.use.amount} ${statLabel})`;
+    }
+    return null;
+  }
+
+  // H6/v0.7.e.1: Use one consumable from inventory (fuel, repair_kit, fuel_cell)
+  _useConsumableFromInventory(slotIndex) {
     const slot = this.inventory.slots[slotIndex];
-    if (!slot || slot.resourceId !== 'fuel') return;
-    const maxFuel = this.player.maxFuel || 100;
-    if (this.player.fuel >= maxFuel) {
-      // Tank already full — flash feedback
-      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
-        text: 'Pepper: Tank is already full, Pax!',
-      }});
+    if (!slot) return;
+    const itemId = slot.resourceId;
+    const p = this.player;
+
+    // Resolve effect: raw fuel is +20 fuel; ITEMS use their `use` block
+    let stat, amount;
+    if (itemId === 'fuel') { stat = 'fuel'; amount = 20; }
+    else if (ITEMS[itemId] && ITEMS[itemId].use) { stat = ITEMS[itemId].use.stat; amount = ITEMS[itemId].use.amount; }
+    else return;
+
+    const max = stat === 'fuel' ? (p.maxFuel || 100) : p.maxHull;
+    const cur = stat === 'fuel' ? p.fuel : p.hull;
+    if (cur >= max) {
+      const full = stat === 'fuel' ? 'Tank is already full, Pax!' : "Hull's already patched up, Pax!";
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: 'Pepper: ' + full } });
       return;
     }
-    this.inventory.removeItem('fuel', 1);
-    const gained = Math.min(20, maxFuel - this.player.fuel);
-    this.player.fuel = Math.min(maxFuel, this.player.fuel + 20);
+
+    this.inventory.removeItem(itemId, 1);
+    const gained = Math.min(amount, max - cur);
+    if (stat === 'fuel') p.fuel = Math.min(max, p.fuel + amount);
+    else p.hull = Math.min(max, p.hull + amount);
     this.sound_mgr.playPickup();
+
     // Floating text
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
-    const ft = this.add.text(W / 2, H / 2 - 30, '+' + gained + ' Fuel', {
-      fontSize: '12px', fontFamily: FONT, color: '#f1c40f', stroke: '#000', strokeThickness: 2,
+    const label = '+' + gained + ' ' + (stat === 'fuel' ? 'Fuel' : 'Hull');
+    const ft = this.add.text(W / 2, H / 2 - 30, label, {
+      fontSize: '12px', fontFamily: FONT, color: stat === 'fuel' ? '#f1c40f' : '#e74c3c', stroke: '#000', strokeThickness: 2,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(800);
     this.tweens.add({ targets: ft, y: ft.y - 30, alpha: 0, duration: 900, onComplete: () => ft.destroy() });
-    // B40: immediately update fuel bar + redraw inventory
+    // B40: immediately update HUD + redraw inventory
     this.updateHUD(W, H);
     // If slot is now empty, deselect; otherwise keep selected for repeat use
     const remainingSlot = this.inventory.slots[slotIndex];
-    if (!remainingSlot || remainingSlot.resourceId !== 'fuel') {
+    if (!remainingSlot || remainingSlot.resourceId !== itemId) {
       this._selectedInvSlot = null;
     }
+  }
+
+  // ========== CRAFTING (v0.7.e.1) ==========
+
+  _craftCtx() {
+    return { components: this.components, craftedRecipes: this.craftedRecipes };
+  }
+
+  /**
+   * Craft a recipe by id. Consumes materials, grants result.
+   * @returns {{ok: boolean, message: string}}
+   */
+  craftRecipe(recipeId) {
+    const recipe = getRecipe(recipeId);
+    if (!recipe) return { ok: false, message: 'Unknown recipe: ' + recipeId };
+
+    const check = this.inventory.canCraft(recipe, this._craftCtx());
+    if (!check.ok) return { ok: false, message: 'Missing — ' + check.missing.join(', ') };
+
+    // Non-repeatable results: weapons + upgrades craft once
+    const r = recipe.result;
+    if (r.type === 'weapon' && this.ownedWeapons.includes(r.id)) {
+      return { ok: false, message: 'Already own ' + recipe.name };
+    }
+    if (r.type === 'upgrade' && this.shipUpgrades[r.system] >= r.tier) {
+      return { ok: false, message: recipe.name + ' already installed' };
+    }
+    if (r.type === 'item' && this.inventory.isFull()
+        && this.inventory.countItem(r.id) === 0) {
+      return { ok: false, message: 'Inventory full' };
+    }
+
+    this.inventory.consumeMaterials(recipe, this._craftCtx());
+
+    if (r.type === 'weapon') {
+      this.ownedWeapons.push(r.id);
+    } else if (r.type === 'upgrade') {
+      this.shipUpgrades[r.system] = r.tier;
+      this._applyUpgrade(r);
+    } else if (r.type === 'item') {
+      this.inventory.addItem(r.id, r.qty || 1);
+    }
+    if (!this.craftedRecipes.includes(recipe.id)) this.craftedRecipes.push(recipe.id);
+
+    this.sound_mgr.play('craft_complete');
+
+    // Pepper bark on first ever craft
+    if (!this.firstCraftDone) {
+      this.firstCraftDone = true;
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: "Pepper: Look at that! Dad's tools, my brains, your button-pressin'. We're basically a factory.",
+      }});
+    }
+
+    this.autoSave();
+    return { ok: true, message: 'Crafted ' + recipe.name };
+  }
+
+  _applyUpgrade(result) {
+    const p = this.player;
+    if (result.stat === 'maxHull') {
+      p.maxHull += result.amount;
+      p.hull = Math.min(p.maxHull, p.hull + result.amount);
+    } else if (result.stat === 'maxShield') {
+      p.maxShield += result.amount;
+      p.shield = Math.min(p.maxShield, p.shield + result.amount);
+    } else if (result.stat === 'speedMult') {
+      p.speedMult = 1 + 0.15 * this.shipUpgrades.engine;
+      if (p.body) p.body.setMaxVelocity(300 * p.speedMult);
+    }
+  }
+
+  // Re-apply derived stats from upgrade tiers (used on save restore)
+  _reapplyUpgradeDerived() {
+    const p = this.player;
+    p.speedMult = 1 + 0.15 * (this.shipUpgrades.engine || 0);
+    if (p.body) p.body.setMaxVelocity(300 * p.speedMult);
   }
 
   // B17/F12: Quest reward popup — "Delivered: X → Received: Y" clarity
