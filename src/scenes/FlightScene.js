@@ -15,6 +15,7 @@ import { RNG } from '../config/constants.js';
 import { STORY_BEATS, getStoryBeat } from '../data/story.js';
 import { getBarksByTrigger, getRandomBark } from '../data/barks.js';
 import { ENEMY_DROP_TABLES, TIN_BADGE } from '../data/enemies.js';
+import BossHarlan from '../entities/BossHarlan.js';
 import { NPCS } from '../data/npcs.js';
 import DialogueUI from '../ui/DialogueUI.js';
 import SoundManager from '../systems/SoundManager.js';
@@ -120,6 +121,11 @@ export default class FlightScene extends Phaser.Scene {
     // Heist chase state (v0.9.b)
     this.heistChase = false;
     this._heistPickup = null;
+
+    // Story flags (v0.9.c) — persisted; drive portal locks + boss state
+    this.storyFlags = [];
+    this.boss = null;
+    this._bossArena = null;
     // Recover mid-chain auto quests on load (new game: no-op until level 2)
     this.time.delayedCall(3000, () => this._processAutoQuests());
 
@@ -567,6 +573,17 @@ export default class FlightScene extends Phaser.Scene {
     // The Heist shipment (v0.9.b)
     this._spawnHeistPickup(sysData, sys);
 
+    // Harlan boss arena (v0.9.c) — active until he's beaten
+    if (this.boss) { this.boss.destroy(); this.boss = null; }
+    this._bossArena = null;
+    if (sysData.name === "Harlan's Reach" && !this.storyFlags.includes('boss_harlan')) {
+      this._bossArena = {
+        center: { x: SYS_W / 2, y: SYS_H / 2 },
+        triggerRadius: 1200,
+        triggered: false,
+      };
+    }
+
     // Checkpoint unease bark (v0.9.b)
     if (sysData.name === 'Checkpoint') {
       this.time.delayedCall(4000, () => this.fireBark('enter_system_checkpoint'));
@@ -659,7 +676,7 @@ export default class FlightScene extends Phaser.Scene {
   // ========== PORTAL LOCKS (via portalLocks.js) ==========
 
   _getGameState() {
-    return { completedQuests: this.questManager.completedQuests };
+    return { completedQuests: this.questManager.completedQuests, flags: this.storyFlags };
   }
 
   // ========== SAVE SYSTEM ==========
@@ -700,6 +717,7 @@ export default class FlightScene extends Phaser.Scene {
       },
       story: {
         firedTriggers: [...this.firedTriggers],
+        storyFlags: [...this.storyFlags],
         completedQuests: this.questManager.completedQuests,
         activeQuests: JSON.parse(JSON.stringify(this.questManager.activeQuests)),
         npcStates: {},
@@ -769,6 +787,7 @@ export default class FlightScene extends Phaser.Scene {
     if (s.firedTriggers) {
       for (const t of s.firedTriggers) this.firedTriggers.add(t);
     }
+    this.storyFlags = s.storyFlags || [];
 
     // Quest state
     this.questManager.deserialize({
@@ -1452,6 +1471,7 @@ export default class FlightScene extends Phaser.Scene {
     this.updateLootPickup(delta);
     this._updateComponentPickups();
     this._updateHeist();
+    this._updateBossFight(time, delta);
 
     // Animated entities
     this.drawAnimatedEntities(time);
@@ -1647,6 +1667,96 @@ export default class FlightScene extends Phaser.Scene {
     }
 
     this.lastActivityTime = Date.now();
+  }
+
+  // ========== HARLAN BOSS FIGHT (v0.9.c) ==========
+
+  _updateBossFight(time, delta) {
+    const arena = this._bossArena;
+    if (!arena) return;
+
+    // Trigger: crossing into the arena starts the fight
+    if (!arena.triggered) {
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, arena.center.x, arena.center.y);
+      if (dist < arena.triggerRadius) {
+        arena.triggered = true;
+        this._startHarlanFight();
+      }
+      return;
+    }
+
+    if (!this.boss) return;
+
+    this.boss.update(time, delta, this.player.x, this.player.y, this.enemyManager.enemyProjectiles);
+
+    // Player projectiles vs boss
+    this.weaponSystem.projectiles.getChildren().forEach(proj => {
+      if (!proj || !proj.active || !this.boss || !this.boss.alive) return;
+      if (Phaser.Math.Distance.Between(proj.x, proj.y, this.boss.x, this.boss.y) < this.boss.size + 6) {
+        const dmg = proj._damage || 15;
+        proj.destroy();
+        this.boss.takeDamage(dmg);
+        const ft = this.add.text(this.boss.x, this.boss.y - 30, '-' + dmg, {
+          fontSize: '9px', fontFamily: FONT, color: '#ffd700', stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(300);
+        this.tweens.add({ targets: ft, y: ft.y - 30, alpha: 0, duration: 700, onComplete: () => ft.destroy() });
+        if (!this.boss.alive) this._onHarlanDefeated();
+      }
+    });
+  }
+
+  _startHarlanFight() {
+    this.sound_mgr.setMusic('music_boss');
+    this.textQueue.enqueue({ type: 'transmission', speaker: 'harlan', data: {
+      speaker: 'harlan',
+      lines: ["By the authority of M.O.T.H.E.R., Section 9, Clause 4: you are hereby detained, catalogued, and—"],
+    }});
+    this.textQueue.enqueue({ type: 'bark', speaker: 'pax', data: { text: 'Pax: Save it, Deputy.' } });
+
+    const a = this._bossArena.center;
+    this.boss = new BossHarlan(this, a.x, a.y - 300, a);
+    this.autoSave();
+  }
+
+  _onHarlanDefeated() {
+    const bx = this.boss.x, by = this.boss.y;
+    this.boss.destroy();
+    this.boss = null;
+    this._bossArena = null;
+    this.sound_mgr.play('boss_defeat');
+    this.sound_mgr.setMusic(this.currentSystem && this.currentSystem.zoneConfig
+      ? this.currentSystem.zoneConfig.music : null);
+    this.enemyManager.clearAll();
+
+    // Explosion burst
+    for (let i = 0; i < 24; i++) {
+      const p = this.add.rectangle(bx, by, 4, 4,
+        [0xffd700, 0xe74c3c, 0xffffff][i % 3]).setDepth(250);
+      this.tweens.add({
+        targets: p,
+        x: bx + (Math.random() - 0.5) * 200, y: by + (Math.random() - 0.5) * 200,
+        alpha: 0, duration: 900, onComplete: () => p.destroy(),
+      });
+    }
+
+    // Radio Booster drop (auto-collect), story flag, quest completion
+    this.inventory.addItem('radio_booster', 1);
+    this.storyFlags.push('boss_harlan');
+    this.questManager.updateProgress('quest_flag', { flag: 'boss_harlan' });
+
+    // Script beats: defeat transmission → post-fight barks → victory cutscene
+    this.textQueue.enqueue({ type: 'transmission', speaker: 'harlan', data: {
+      speaker: 'harlan',
+      lines: ["...Filed under: unprecedented. She won't stop, kids. She never stops."],
+    }});
+    this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+      text: 'Pepper: One down. ...How many more of those she got, you think?' } });
+    this.textQueue.enqueue({ type: 'bark', speaker: 'pax', data: {
+      text: "Pax: Doesn't matter. That's one less between us and Mom and Dad." } });
+    this.time.delayedCall(14000, () => {
+      this.playCutscene('harlan_victory', () => this._processAutoQuests());
+    });
+    this.autoSave();
   }
 
   // ========== AUTO QUESTS (v0.9.b) ==========
@@ -2538,6 +2648,12 @@ export default class FlightScene extends Phaser.Scene {
     this.playerDead = true;
     // M2: quest chase states reset on death
     this.heistChase = false;
+    // v0.9.c: boss resets to Phase 1 full HP ⚑ — fight restarts on re-approach
+    if (this.boss) { this.boss.destroy(); this.boss = null; }
+    if (this._bossArena) this._bossArena.triggered = false;
+    if (this.currentSystem && this.currentSystem.zoneConfig) {
+      this.sound_mgr.setMusic(this.currentSystem.zoneConfig.music);
+    }
     this.sound_mgr.stopAll();
     this.enemyManager.clearAll();
 
@@ -3273,6 +3389,24 @@ export default class FlightScene extends Phaser.Scene {
 
     // Credits
     this.creditsLabel.setText('CR: ' + (this.player.credits || 0)).setPosition(W - 10, 160).setOrigin(1, 0);
+
+    // Boss HP bar (v0.9.c) — top center during the fight
+    if (this.boss && this.boss.alive) {
+      const bw = 400, bh = 12;
+      const bx = W / 2 - bw / 2, by = 24;
+      g.fillStyle(0x000000, 0.7); g.fillRect(bx - 4, by - 4, bw + 8, bh + 8);
+      g.fillStyle(0x331111, 1); g.fillRect(bx, by, bw, bh);
+      g.fillStyle(0xc0392b, 1); g.fillRect(bx, by, bw * (this.boss.hp / this.boss.maxHp), bh);
+      g.lineStyle(1, 0xffd700, 0.8); g.strokeRect(bx, by, bw, bh);
+      if (!this._bossLabel) {
+        this._bossLabel = this.add.text(W / 2, by + bh + 8, 'DEPUTY HARLAN', {
+          fontSize: '10px', fontFamily: FONT, color: '#ffd700',
+        }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(501);
+      }
+      this._bossLabel.setVisible(true).setPosition(W / 2, by + bh + 8);
+    } else if (this._bossLabel) {
+      this._bossLabel.setVisible(false);
+    }
 
     // Quest HUD
     this.questHudGfx.clear();

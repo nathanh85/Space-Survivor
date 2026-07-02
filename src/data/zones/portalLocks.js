@@ -62,6 +62,8 @@ function isConditionMet(condition, gameState) {
   if (condition === 'quest_milestone_3') {
     return (gameState.completedQuests || []).length >= 3;
   }
-  // All other conditions stay locked until unlock system exists
+  // v0.9.c: story flags (boss_harlan set on Harlan defeat → Ashfall opens)
+  if ((gameState.flags || []).includes(condition)) return true;
+  // All other conditions stay locked until their content exists (post-v1.0)
   return false;
 }

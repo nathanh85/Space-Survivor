@@ -135,19 +135,20 @@ export const QUESTS = [
     },
   },
 
-  // Quest 8: Deputy Harlan (NEW — boss fight placeholder)
+  // Quest 8: Deputy Harlan (v0.9.c — real boss fight)
   {
     id: 'quest_deputy_harlan',
     name: 'Deputy Harlan',
-    description: "M.O.T.H.E.R.'s enforcer is waiting. Time for a reckoning.",
+    description: "M.O.T.H.E.R.'s enforcer is waiting at Harlan's Reach. Time for a reckoning.",
     giver: 'auto', turnIn: 'auto',
     requiredLevel: 5, requires: ['quest_radio_booster'],
     objectives: [
-      { type: 'visit_system_specific', system: "Harlan's Reach", target: 1, current: 0 },
+      { type: 'quest_flag', flag: 'boss_harlan', target: 1, current: 0, label: 'Defeat Deputy Harlan' },
     ],
     rewards: { credits: 500, xp: 500 },
+    transmitter: 'outrider',
     dialogue: {
-      offer: ["Deputy Harlan's at Harlan's Reach. He's the one standing between us and the Outer Rim."],
+      offer: ["Deputy Harlan's at Harlan's Reach. He's the one standing between us and the Outer Rim.", "Beat him, and the whole frontier hears about it."],
       inProgress: ["Harlan's waiting. Head to Harlan's Reach."],
       complete: ["Harlan's down. The gate to the Outer Rim is open."],
     },
