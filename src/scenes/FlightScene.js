@@ -126,6 +126,9 @@ export default class FlightScene extends Phaser.Scene {
     this.storyFlags = [];
     this.boss = null;
     this._bossArena = null;
+
+    // M2 (v0.10.a): last docked location — death respawns here, no penalty
+    this.lastDock = null; // { systemId, x, y }
     // Recover mid-chain auto quests on load (new game: no-op until level 2)
     this.time.delayedCall(3000, () => this._processAutoQuests());
 
@@ -178,6 +181,13 @@ export default class FlightScene extends Phaser.Scene {
       this.input.gamepad.once('connected', (gp) => {
         this.pad = gp;
         console.log('Gamepad connected:', gp.id);
+        // M3: one bark on first gamepad detection
+        if (!this.sessionTriggers.has('gamepad_bark')) {
+          this.sessionTriggers.add('gamepad_bark');
+          this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+            text: 'Pepper: Ooh, a controller! Left stick flies, right stick shoots. Fancy.',
+          }});
+        }
       });
       if (this.input.gamepad.total > 0) {
         this.pad = this.input.gamepad.getPad(0);
@@ -376,9 +386,10 @@ export default class FlightScene extends Phaser.Scene {
           this.scene.launch('CutsceneScene', { beatId: beat.id });
           this.scene.pause();
           // When cutscene ends, FlightScene resumes — fade in there
+          // (v0.10.a: slower fade per beat map pacing note)
           this.events.on('resume', () => {
             this.cameras.main.setAlpha(1);
-            this.cameras.main.fadeIn(800, 0, 0, 0);
+            this.cameras.main.fadeIn(1500, 0, 0, 0);
           });
         } else {
           // No cutscene (returning player) — just fade in
@@ -723,6 +734,7 @@ export default class FlightScene extends Phaser.Scene {
         currentSystem: this.currentSystemId,
         visitedSystems: [...this.visited],
         clearedSystems: this._clearedSystems || [],
+        lastDock: this.lastDock,
       },
       story: {
         firedTriggers: [...this.firedTriggers],
@@ -789,6 +801,7 @@ export default class FlightScene extends Phaser.Scene {
       }
     }
     this._clearedSystems = u.clearedSystems || [];
+    this.lastDock = u.lastDock || null;
 
     // Portal locks computed from config — no save/restore needed
 
@@ -2863,10 +2876,9 @@ export default class FlightScene extends Phaser.Scene {
       },
     });
 
-    // Penalty text — depth 1000
-    const creditsLost = Math.floor(this.player.credits * 0.25);
+    // M2: no penalty — just the "dust yourself off" flavor
     const penaltyText = this.add.text(textX, startY + lines.length * 28 + 20,
-      `Credits confiscated: -${creditsLost}\nHull repaired to 50%`, {
+      'Dust yourselves off, kids.\nThe Dustkicker\'s waiting at the last dock.', {
       fontSize: '8px', fontFamily: FONT, color: '#888888', lineSpacing: 4,
     }).setScrollFactor(0).setDepth(1000).setAlpha(0);
     elements.push(penaltyText);
@@ -2900,25 +2912,36 @@ export default class FlightScene extends Phaser.Scene {
   }
 
   respawnPlayer() {
-    // Penalty: lose 25% credits, hull 50%, fuel 50%
-    this.player.credits = Math.floor(this.player.credits * 0.75);
-    this.player.hull = this.player.maxHull * 0.5;
+    // M2 (v0.10.a): no penalty — kids' game. Full hull + shield, keep
+    // everything, respawn at the last docked station. Quest chase states
+    // were already reset in handlePlayerDeath.
+    this.player.hull = this.player.maxHull;
     this.player.shield = this.player.maxShield;
-    this.player.fuel = this.player.maxFuel * 0.5;
+    this.player.fuel = Math.max(this.player.fuel, 25); // never stranded
     this.playerDead = false;
     this.player.setVisible(true);
     this.combatHullWarned = false;
     this.combatShieldsWarned = false;
 
-    // Move to nearest station or hub
-    const zion = this.planets.find(p => p.isHub);
-    if (zion) {
-      this.player.setPosition(zion.x, zion.y + 100);
-    } else if (this.stations.length > 0) {
-      const st = this.stations[0];
-      this.player.setPosition(st.x, st.y + 50);
+    // Respawn at last dock; fall back to a local station/hub, then Zion
+    if (this.lastDock) {
+      if (this.lastDock.systemId !== this.currentSystemId) {
+        this.enterSystem(this.lastDock.systemId);
+      }
+      this.player.setPosition(this.lastDock.x, this.lastDock.y);
+    } else {
+      const zion = this.planets.find(p => p.isHub);
+      if (zion) {
+        this.player.setPosition(zion.x, zion.y + 100);
+      } else if (this.stations.length > 0) {
+        const st = this.stations[0];
+        this.player.setPosition(st.x, st.y + 50);
+      } else {
+        this.enterSystem(this.startingSystemId);
+      }
     }
     if (this.player.body) this.player.body.setVelocity(0, 0);
+    this.autoSave();
 
     this.cameras.main.fadeIn(800, 0, 0, 0);
     this.time.delayedCall(500, () => {
@@ -2943,6 +2966,11 @@ export default class FlightScene extends Phaser.Scene {
       if (!this.firedTriggers.has('vera_intro')) {
         this.playCutscene('vera_intro', () => this.tryDockOrLand());
         return;
+      }
+      // M2: remember the dock point for death respawn
+      const zionPlanet = this.planets.find(p => p.isHub);
+      if (zionPlanet) {
+        this.lastDock = { systemId: this.currentSystemId, x: zionPlanet.x, y: zionPlanet.y + 100 };
       }
       this.autoSave(); // save on every dock (reverted B32 regression)
       // H3: Show Vera's quest dialogue on hub dock before launching HubScene
@@ -3041,6 +3069,8 @@ export default class FlightScene extends Phaser.Scene {
       this.playCutscene('the_stand', () => this.tryDock());
       return;
     }
+    // M2: remember the dock point for death respawn
+    this.lastDock = { systemId: this.currentSystemId, x: this.nearStation.x, y: this.nearStation.y + 60 };
     this.autoSave(); // save on every station dock
     // Emergency fuel refill
     if (this.outOfFuel) {

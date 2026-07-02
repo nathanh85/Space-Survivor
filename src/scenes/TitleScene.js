@@ -74,13 +74,30 @@ export default class TitleScene extends Phaser.Scene {
       }
     }
 
-    // Controls hint
-    this.add.text(W / 2, H * 0.78, '[Arrows] Move  |  [Click] Aim+Shoot  |  [M] Map  |  [TAB] Inventory', {
-      fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#555555',
-    }).setOrigin(0.5);
+    // Controls card (M3, v0.10.a) — keyboard + gamepad columns
+    const cardY = H * 0.755;
+    const cardW = 640, cardH = 130;
+    const cardGfx = this.add.graphics();
+    cardGfx.fillStyle(0x0a1420, 0.6);
+    cardGfx.fillRect(W / 2 - cardW / 2, cardY, cardW, cardH);
+    cardGfx.lineStyle(1, 0x1a3a4a, 0.8);
+    cardGfx.strokeRect(W / 2 - cardW / 2, cardY, cardW, cardH);
+
+    this.add.text(W / 2, cardY + 10, '— CONTROLS —', {
+      fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#00d4ff',
+    }).setOrigin(0.5, 0);
+
+    const kbLines = 'KEYBOARD + MOUSE\nArrows ....... fly\nMouse ..... aim + fire\nRight-click .. cannon\nE warp   F dock   M map\nTAB inventory   N music';
+    const gpLines = 'GAMEPAD\nLeft stick ....... fly\nRight stick  aim + fire\nL1 ............ cannon\nA ....... dock / advance';
+    this.add.text(W / 2 - cardW / 2 + 40, cardY + 30, kbLines, {
+      fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#7a8a99', lineSpacing: 6,
+    });
+    this.add.text(W / 2 + 60, cardY + 30, gpLines, {
+      fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#7a8a99', lineSpacing: 6,
+    });
 
     // Chrome disclaimer
-    this.add.text(W / 2, H * 0.84, 'Best experienced in Chrome with a gamepad', {
+    this.add.text(W / 2, cardY + cardH + 14, 'Best experienced in Chrome with a gamepad', {
       fontSize: '8px', fontFamily: '"Press Start 2P", monospace', color: '#444444',
     }).setOrigin(0.5);
 
