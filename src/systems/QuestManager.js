@@ -70,6 +70,11 @@ export default class QuestManager {
             obj.current = Math.min(obj.target, obj.current + 1);
             changed = true;
           }
+        } else if (eventType === 'quest_flag' && obj.type === 'quest_flag') {
+          if (obj.flag === eventData.flag) {
+            obj.current = Math.min(obj.target, obj.current + 1);
+            changed = true;
+          }
         }
       }
       if (changed && this.isQuestComplete(quest.id)) {

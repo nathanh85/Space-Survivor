@@ -14,7 +14,7 @@ import { getRecipe } from '../data/recipes.js';
 import { RNG } from '../config/constants.js';
 import { STORY_BEATS, getStoryBeat } from '../data/story.js';
 import { getBarksByTrigger, getRandomBark } from '../data/barks.js';
-import { ENEMY_DROP_TABLES } from '../data/enemies.js';
+import { ENEMY_DROP_TABLES, TIN_BADGE } from '../data/enemies.js';
 import { NPCS } from '../data/npcs.js';
 import DialogueUI from '../ui/DialogueUI.js';
 import SoundManager from '../systems/SoundManager.js';
@@ -24,7 +24,14 @@ import EnemyManager from '../systems/EnemyManager.js';
 import SaveManager from '../systems/SaveManager.js';
 import QuestManager from '../systems/QuestManager.js';
 import DebugManager from '../systems/DebugManager.js';
-import { getQuest } from '../data/quests.js';
+import { getQuest, getAvailableQuests } from '../data/quests.js';
+import { characterPortraitKey, CHARACTER_MAP } from '../data/entities/portraits.js';
+
+// Pepper/Pax one-liners fired right after accepting specific quests (v0.9.b)
+const QUEST_ACCEPT_BARKS = {
+  quest_find_grix: { speaker: 'pepper', text: 'Pepper: A delivery job. We fall out of the sky and land in the mail business.' },
+  quest_pest_control: { speaker: 'pepper', text: 'Pepper: Fightin\' robots over pie. Dad would love this.' },
+};
 
 export default class FlightScene extends Phaser.Scene {
   constructor() {
@@ -35,19 +42,8 @@ export default class FlightScene extends Phaser.Scene {
     this._initData = data || {};
   }
 
-  preload() {
-    // Load character portraits (fallback to colored rect if missing)
-    const portraits = [
-      'pax_neutral', 'pepper_neutral', 'mother', 'marshal', 'judge',
-      'grix', 'vera', 'informant', 'miner', 'smuggler', 'commander', 'mechanic'
-    ];
-    portraits.forEach(p => {
-      this.load.image(p, `assets/portraits/${p}.png`);
-    });
-    this.load.on('loaderror', (file) => {
-      console.warn('[PORTRAIT] Failed to load:', file.key, file.url);
-    });
-  }
+  // v0.9.b: legacy single-expression portraits are gone from disk —
+  // everything resolves through CHARACTER_MAP now (loaded by PreloadScene).
 
   create() {
     // Sound
@@ -120,6 +116,12 @@ export default class FlightScene extends Phaser.Scene {
 
     // Quest manager
     this.questManager = new QuestManager();
+
+    // Heist chase state (v0.9.b)
+    this.heistChase = false;
+    this._heistPickup = null;
+    // Recover mid-chain auto quests on load (new game: no-op until level 2)
+    this.time.delayedCall(3000, () => this._processAutoQuests());
 
     // Trade UI state
     this.tradeOpen = false;
@@ -404,6 +406,9 @@ export default class FlightScene extends Phaser.Scene {
       for (const cp of this._componentPickups) { if (cp.obj) cp.obj.destroy(); }
     }
     this._componentPickups = [];
+    // Clear heist prop (chase state itself survives warp only long enough
+    // for completeWarp to resolve the escape)
+    if (this._heistPickup) { this._heistPickup.obj.destroy(); this._heistPickup = null; }
 
     if (!this.systemCache[sysId]) {
       // H3/H4: mark isStarting on sysData before generating so UniverseGenerator can add trading post
@@ -469,12 +474,16 @@ export default class FlightScene extends Phaser.Scene {
     }
 
     // Quest progress: visit_system + visit_system_specific
-    if (isFirstVisit && this.questManager) {
-      const visitReady = this.questManager.updateProgress('visit_system', {});
-      this.questManager.updateProgress('visit_system_specific', { system: sysData.name });
+    if (this.questManager) {
+      const visitReady = isFirstVisit ? this.questManager.updateProgress('visit_system', {}) : [];
+      const specReady = this.questManager.updateProgress('visit_system_specific', { system: sysData.name });
+      if (specReady.length > 0) {
+        this.time.delayedCall(2500, () => this._processAutoQuests());
+      }
       // v0.9.a: Outrider Contact completion plays its cutscene at the trigger
       if (visitReady.includes('quest_outrider_contact')) {
-        this.time.delayedCall(2500, () => this.playCutscene('outrider_contact'));
+        this.time.delayedCall(2500, () =>
+          this.playCutscene('outrider_contact', () => this._processAutoQuests()));
       } else if (visitReady.length > 0) {
         this.time.delayedCall(3000, () => {
           this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: That's enough systems scouted. Let's report back." } });
@@ -554,6 +563,14 @@ export default class FlightScene extends Phaser.Scene {
 
     // Unique component pickups (v0.7.e.3) — proper layouts land in v0.9.d
     this._spawnComponentPickups(sysData, sys);
+
+    // The Heist shipment (v0.9.b)
+    this._spawnHeistPickup(sysData, sys);
+
+    // Checkpoint unease bark (v0.9.b)
+    if (sysData.name === 'Checkpoint') {
+      this.time.delayedCall(4000, () => this.fireBark('enter_system_checkpoint'));
+    }
   }
 
   // Act 1 component locations: Diamond Aperture @ Ironvale, Bore Assembly @ Scrapyard
@@ -1254,7 +1271,10 @@ export default class FlightScene extends Phaser.Scene {
     for (const st of this.stations) {
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, st.x, st.y) < 100) {
         this.nearStation = st;
-        if (!this.nearStationTriggered) {
+        if (st.name && st.name.includes('Grix') && !this.firedTriggers.has('bark_grix_station')) {
+          this.firedTriggers.add('bark_grix_station');
+          this.fireBark('near_station_grix_first');
+        } else if (!this.nearStationTriggered) {
           this.nearStationTriggered = true;
           this.fireBark('near_station_first');
         }
@@ -1268,6 +1288,16 @@ export default class FlightScene extends Phaser.Scene {
       if (p.isHub && Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 150) {
         this.nearPlanetZion = true;
         break;
+      }
+    }
+    // First approach to Zion planet (wider radius so it fires before the dock prompt)
+    if (!this.firedTriggers.has('bark_near_zion')) {
+      for (const p of this.planets) {
+        if (p.isHub && Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 400) {
+          this.firedTriggers.add('bark_near_zion');
+          this.fireBark('near_planet_zion_first');
+          break;
+        }
       }
     }
 
@@ -1421,6 +1451,7 @@ export default class FlightScene extends Phaser.Scene {
     this.updateCombat(time, delta);
     this.updateLootPickup(delta);
     this._updateComponentPickups();
+    this._updateHeist();
 
     // Animated entities
     this.drawAnimatedEntities(time);
@@ -1618,7 +1649,148 @@ export default class FlightScene extends Phaser.Scene {
     this.lastActivityTime = Date.now();
   }
 
-  // ========== CUTSCENES (v0.9.a) ==========
+  // ========== AUTO QUESTS (v0.9.b) ==========
+  // Quests 4-8 have giver/turnIn 'auto': they self-accept when prerequisites
+  // + level are met (announced via transmission) and self-turn-in when
+  // objectives complete. Without this the Act 1 chain dead-ends at quest 3.
+
+  _grantXp(amount) {
+    this.player.xp += amount;
+    while (this.player.xp >= this.player.xpNext) {
+      this.player.level++;
+      this.player.xp -= this.player.xpNext;
+      this.player.xpNext = Math.floor(this.player.xpNext * 1.5);
+      this.onLevelUp();
+    }
+  }
+
+  _processAutoQuests() {
+    const qm = this.questManager;
+    let changed = false;
+
+    // 1. Auto turn-in for completed auto quests
+    for (const q of [...qm.activeQuests]) {
+      if (q.turnIn !== 'auto' || !qm.isQuestComplete(q.id)) continue;
+      // Outrider Contact turn-in waits for its cutscene to play
+      if (q.id === 'quest_outrider_contact' && !this.firedTriggers.has('outrider_contact')) continue;
+      const deliveredObjs = [...q.objectives];
+      const rewards = qm.turnInQuest(q.id, this.inventory);
+      if (rewards) {
+        if (rewards.credits) this.player.credits += rewards.credits;
+        if (rewards.fuel) this.player.fuel = Math.min(this.player.maxFuel, this.player.fuel + rewards.fuel);
+        this._showRewardPopup(rewards, deliveredObjs);
+        if (rewards.xp) this._grantXp(rewards.xp);
+      }
+      this._onAutoQuestComplete(q.id);
+      changed = true;
+    }
+
+    // 2. Auto accept newly available auto quests
+    const avail = getAvailableQuests(
+      qm.completedQuests, qm.activeQuests.map(q => q.id), this.player.level
+    ).filter(q => q.giver === 'auto');
+    for (const q of avail) {
+      if (!qm.acceptQuest(q.id, this.inventory)) continue;
+      this.textQueue.enqueue({ type: 'transmission', speaker: q.transmitter || '???',
+        data: { speaker: q.transmitter || '???', lines: q.dialogue.offer } });
+      const bark = QUEST_ACCEPT_BARKS[q.id];
+      if (bark) this.textQueue.enqueue({ type: 'bark', speaker: bark.speaker, data: { text: bark.text } });
+      changed = true;
+    }
+
+    if (changed) this.autoSave();
+  }
+
+  // Story beats that fire when specific auto quests complete
+  _onAutoQuestComplete(questId) {
+    if (questId === 'quest_meet_informant') {
+      // The Informant's full reveal (DIALOGUE_SCRIPT_FINAL post-heist scene)
+      this.textQueue.enqueue({ type: 'transmission', speaker: '???', data: {
+        speaker: '???',
+        lines: [
+          "You've got guts, kid. Or no sense. Out here that's the same currency.",
+          "43LL Sector. The Factory. That's where M.O.T.H.E.R. keeps the ones who fought back. Your folks included.",
+          "Funny thing about your folks. M.O.T.H.E.R. don't keep prisoners she don't *value*. Ask yourself what makes two junkyard engineers so valuable.",
+          "Watch the dark between the stars, kids. M.O.T.H.E.R.'s always listenin'.",
+        ],
+      }});
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: 'Pepper: The Factory. He said they\'re alive, Pax. They\'re ALIVE.' } });
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pax', data: {
+        text: 'Pax: Then we go get \'em. Jammers, deputies, whatever she\'s got — we go get \'em.' } });
+    } else if (questId === 'quest_the_heist') {
+      this.fireBark('heist_complete');
+    }
+  }
+
+  // ========== THE HEIST (v0.9.b) ==========
+
+  _spawnHeistPickup(sysData, sys) {
+    if (sysData.name !== 'Scrapyard') return;
+    const qm = this.questManager;
+    const active = qm.activeQuests.find(q => q.id === 'quest_the_heist');
+    if (!active || qm.isQuestComplete('quest_the_heist')) return;
+    if (this.heistChase) return;
+
+    const rng = new RNG(sysData.seed + 1717);
+    const angle = rng.float(0, Math.PI * 2);
+    const dist = rng.int(1100, 1500);
+    const x = sys.star.x + Math.cos(angle) * dist;
+    const y = sys.star.y + Math.sin(angle) * dist;
+
+    const obj = this.add.container(x, y).setDepth(50);
+    const gfx = this.add.graphics();
+    // Crate with M.O.T.H.E.R. red trim
+    gfx.fillStyle(0x8a7550, 1);
+    gfx.fillRect(-12, -10, 24, 20);
+    gfx.lineStyle(2, 0xe74c3c, 0.9);
+    gfx.strokeRect(-12, -10, 24, 20);
+    gfx.fillStyle(0xe74c3c, 1);
+    gfx.fillCircle(0, 0, 4);
+    obj.add(gfx);
+    const label = this.add.text(0, 26, 'M.O.T.H.E.R. SHIPMENT', {
+      fontSize: '9px', fontFamily: FONT, color: '#e74c3c',
+    }).setOrigin(0.5, 0);
+    obj.add(label);
+    this.tweens.add({ targets: gfx, alpha: 0.55, yoyo: true, repeat: -1, duration: 800 });
+
+    this._heistPickup = { x, y, obj };
+  }
+
+  _updateHeist() {
+    // Pickup collection
+    if (this._heistPickup) {
+      const cp = this._heistPickup;
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, cp.x, cp.y) < 50) {
+        cp.obj.destroy();
+        this._heistPickup = null;
+        this._startHeistChase();
+      }
+    }
+  }
+
+  _startHeistChase() {
+    this.heistChase = true;
+    this.sound_mgr.play('component_pickup');
+    this.fireBark('heist_item_collected');
+    this.time.delayedCall(2500, () => this.fireBark('heist_chase_start'));
+    this.time.delayedCall(9000, () => { if (this.heistChase) this.fireBark('heist_chase_midpoint'); });
+
+    // 6 pursuers (Standard 1-stripe Tin Badges), staggered 2s.
+    // Chase tuning ⚑: 90% of player top speed — pressure, not inevitability.
+    const rank = { key: 'standard_1', hpMult: 1.3, dmgMult: 1.1, spdMult: 1.05, color: 0xff4444, stripes: 1 };
+    const pursuerCfg = { ...TIN_BADGE, speed: Math.round(250 * 0.9 / 1.05), detectRange: 6000, attackRange: 200 };
+    for (let i = 0; i < 6; i++) {
+      this.time.delayedCall(i * 2000, () => {
+        if (!this.heistChase || this.playerDead) return;
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 600 + Math.random() * 200;
+        const sx = Phaser.Math.Clamp(this.player.x + Math.cos(angle) * dist, 100, SYS_W - 100);
+        const sy = Phaser.Math.Clamp(this.player.y + Math.sin(angle) * dist, 100, SYS_H - 100);
+        this.enemyManager.spawnEnemy(sx, sy, pursuerCfg, rank);
+      });
+    }
+  }
 
   // Play a registered cutscene once; optional continuation after resume.
   playCutscene(id, afterFn = null) {
@@ -1726,14 +1898,11 @@ export default class FlightScene extends Phaser.Scene {
     // Portrait: 48x48, 10px from left edge of bark box
     const portraitX = boxX + PAD + PORTRAIT_SZ / 2;
     const portraitY = boxY + boxH / 2;
-    // Resolve portrait key — support M.O.T.H.E.R. and named speakers
-    const portraitKeyMap = {
-      pepper: 'pepper_neutral', pax: 'pax_neutral',
-      'M.O.T.H.E.R.': 'mother', mother: 'mother',
-      grix: 'grix', vera: 'vera', 'commander vera': 'vera',
-    };
-    const pKey = portraitKeyMap[sp] || portraitKeyMap[sp.toLowerCase()] || sp;
-    if (this.textures.exists(pKey)) {
+    // v0.9.b: resolve through CHARACTER_MAP (legacy keys no longer exist)
+    const spNorm = sp === 'M.O.T.H.E.R.' ? 'mother'
+      : sp.toLowerCase() === 'commander vera' ? 'vera' : sp.toLowerCase();
+    const pKey = CHARACTER_MAP[spNorm] ? characterPortraitKey(spNorm) : null;
+    if (pKey && this.textures.exists(pKey)) {
       const portrait = this.add.image(portraitX, portraitY, pKey)
         .setDisplaySize(PORTRAIT_SZ, PORTRAIT_SZ).setScrollFactor(0).setDepth(801).setAlpha(0);
       this.barkObjects.push(portrait);
@@ -1838,9 +2007,10 @@ export default class FlightScene extends Phaser.Scene {
 
     // Show portrait for M.O.T.H.E.R. transmissions — B37: constrain within box
     if (this.transPortrait) { this.transPortrait.destroy(); this.transPortrait = null; }
-    if (isMother && this.textures.exists('mother')) {
+    const motherKey = characterPortraitKey('mother');
+    if (isMother && this.textures.exists(motherKey)) {
       // Portrait sits left of text, vertically aligned with transmission box top
-      this.transPortrait = this.add.image(0, 0, 'mother')
+      this.transPortrait = this.add.image(0, 0, motherKey)
         .setDisplaySize(48, 48).setScrollFactor(0).setDepth(521).setVisible(false);
       this.transContainer.add(this.transPortrait);
     }
@@ -1995,6 +2165,9 @@ export default class FlightScene extends Phaser.Scene {
 
     // Pepper bark
     this.fireBark('level_up');
+
+    // Level gate may have unlocked the next auto quest
+    this.time.delayedCall(800, () => this._processAutoQuests());
 
     // Auto-save on level up
     this.autoSave();
@@ -2189,6 +2362,7 @@ export default class FlightScene extends Phaser.Scene {
     const killReady = this.questManager.updateProgress('kill_enemy', { enemy: enemy.configId || 'tin_badge' });
     if (killReady.length > 0) {
       this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: That's the last one for the job! Time to report in." } });
+      this.time.delayedCall(1000, () => this._processAutoQuests());
     }
 
     // XP
@@ -2296,6 +2470,7 @@ export default class FlightScene extends Phaser.Scene {
           const qReady = this.questManager.updateProgress('collect_resource', { resource: item._lootType, amount: item._lootAmount });
           if (qReady.length > 0) {
             this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: That's everything for the quest! Let's go turn it in." } });
+            this.time.delayedCall(1000, () => this._processAutoQuests());
           }
         }
 
@@ -2361,6 +2536,8 @@ export default class FlightScene extends Phaser.Scene {
 
   handlePlayerDeath() {
     this.playerDead = true;
+    // M2: quest chase states reset on death
+    this.heistChase = false;
     this.sound_mgr.stopAll();
     this.enemyManager.clearAll();
 
@@ -2408,7 +2585,7 @@ export default class FlightScene extends Phaser.Scene {
 
     // M.O.T.H.E.R. portrait (or fallback) — ABOVE overlay + click zone
     const portraitX = W * 0.25, portraitY = H * 0.4;
-    const pKey = 'mother';
+    const pKey = characterPortraitKey('mother');
     if (this.textures.exists(pKey)) {
       const img = this.add.image(portraitX, portraitY, pKey).setDisplaySize(96, 96)
         .setScrollFactor(0).setDepth(1000).setAlpha(0);
@@ -2523,6 +2700,11 @@ export default class FlightScene extends Phaser.Scene {
         text: "Pepper: Well... that happened. At least they didn't keep us."
       }});
     });
+
+    // Heist retry: shipment reappears if we died mid-chase in the Scrapyard
+    if (this.currentSystem && !this._heistPickup) {
+      this._spawnHeistPickup(this.currentSystem.data, this.currentSystem);
+    }
   }
 
   // ========== NPC DOCKING / HUB LANDING ==========
@@ -2574,7 +2756,9 @@ export default class FlightScene extends Phaser.Scene {
           this.dialogueUI.show(beat, () => {
             this.dialogueActive = false;
             this.questManager.acceptQuest(availQuest.id, this.inventory);
-            this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: New quest from Vera! Check the HUD." } });
+            const ab = QUEST_ACCEPT_BARKS[availQuest.id];
+            this.textQueue.enqueue({ type: 'bark', speaker: ab ? ab.speaker : 'pepper',
+              data: { text: ab ? ab.text : "Pepper: New quest from Vera! Check the HUD." } });
             this._launchHubScene();
           });
           return;
@@ -2701,7 +2885,9 @@ export default class FlightScene extends Phaser.Scene {
       this.dialogueUI.show(beat, () => {
         this.dialogueActive = false;
         this.questManager.acceptQuest(availQuest.id, this.inventory);
-        this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: New quest accepted! Check the HUD." } });
+        const ab = QUEST_ACCEPT_BARKS[availQuest.id];
+        this.textQueue.enqueue({ type: 'bark', speaker: ab ? ab.speaker : 'pepper',
+          data: { text: ab ? ab.text : "Pepper: New quest accepted! Check the HUD." } });
         this.autoSave(); // B32: save after quest accept
       });
       return;
@@ -3111,6 +3297,12 @@ export default class FlightScene extends Phaser.Scene {
           label = 'Kills: ' + obj.current + '/' + obj.target;
         } else if (obj.type === 'visit_system') {
           label = 'Systems: ' + obj.current + '/' + obj.target;
+        } else if (obj.type === 'visit_system_specific') {
+          label = 'Go to: ' + obj.system;
+        } else if (obj.type === 'visit_npc') {
+          label = 'Find: ' + (obj.npc === 'merchant_grix' ? 'Grix' : obj.npc);
+        } else if (obj.type === 'quest_flag') {
+          label = obj.label || 'Objective';
         }
         const objText = this.add.text(18, qy + 14 + i * 14, label, {
           fontSize: '8px', fontFamily: FONT, color: obj.current >= obj.target ? '#2ecc71' : '#aaa',
@@ -3477,6 +3669,13 @@ export default class FlightScene extends Phaser.Scene {
 
   openGalaxyMap() {
     if (this.invOpen || this.dialogueActive) return;
+    // v0.9.b: map warp locked during the heist chase — fly to the gate
+    if (this.heistChase) {
+      this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: {
+        text: "Pepper: No time for the map, Pax — GET TO THE GATE!",
+      }});
+      return;
+    }
     this.sound_mgr.stopAll();
     this.scene.pause('FlightScene');
     this.scene.launch('GalaxyMapScene', {
@@ -3562,7 +3761,14 @@ export default class FlightScene extends Phaser.Scene {
 
   completeWarp(targetId) {
     this.scene.resume('FlightScene');
+    // v0.9.b: warping out with the shipment completes the heist
+    const escaped = this.heistChase;
+    this.heistChase = false;
     this.enterSystem(targetId);
+    if (escaped) {
+      this.questManager.updateProgress('quest_flag', { flag: 'heist_escaped' });
+      this.time.delayedCall(1500, () => this._processAutoQuests());
+    }
 
     // Fire first warp cutscene after landing
     if (this._pendingFirstWarp) {

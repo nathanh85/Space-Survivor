@@ -3,6 +3,7 @@
 // ============================================================
 
 import Phaser from 'phaser';
+import { characterPortraitKey, CHARACTER_MAP } from '../data/entities/portraits.js';
 
 const BOX_HEIGHT = 160;
 const PORTRAIT_SIZE = 72;
@@ -19,28 +20,20 @@ const PORTRAIT_COLORS = {
   outrider:     { bg: 0x2ecc71, initial: 'O', label: '#2ecc71' },
 };
 
-// Speaker name → portrait texture key mapping
-const SPEAKER_PORTRAITS = {
-  pepper: 'pepper_neutral',
-  pax: 'pax_neutral',
-  'M.O.T.H.E.R.': 'mother',
-  grix: 'grix',
+// Speaker name → CHARACTER_MAP character id (v0.9.b: legacy keys removed)
+const SPEAKER_CHARACTERS = {
+  'm.o.t.h.e.r.': 'mother',
   'commander vera': 'vera',
   '???': 'informant',
-  outrider: 'commander',
-  marshal: 'marshal',
-  judge: 'judge',
-  miner: 'miner',
-  smuggler: 'smuggler',
-  mechanic: 'mechanic',
 };
 
 function getPortraitKey(speaker) {
   const key = (speaker || '').toLowerCase();
-  if (SPEAKER_PORTRAITS[speaker]) return SPEAKER_PORTRAITS[speaker];
-  if (SPEAKER_PORTRAITS[key]) return SPEAKER_PORTRAITS[key];
-  for (const [k, v] of Object.entries(SPEAKER_PORTRAITS)) {
-    if (key.includes(k.toLowerCase())) return v;
+  const charId = SPEAKER_CHARACTERS[key] || (CHARACTER_MAP[key] ? key : null);
+  if (charId) return characterPortraitKey(charId);
+  // Partial match (e.g. "Deputy Harlan" → harlan)
+  for (const name of Object.keys(CHARACTER_MAP)) {
+    if (key.includes(name)) return characterPortraitKey(name);
   }
   return null;
 }
@@ -204,8 +197,12 @@ export default class DialogueUI {
     this.portraitGfx.clear();
     this.portraitImage.setVisible(false);
 
-    // Auto-resolve portrait from speaker if not explicitly set
-    const portraitKey = beat.portrait || getPortraitKey(beat.speaker);
+    // Auto-resolve portrait from speaker if not explicitly set.
+    // beat.portrait may be a legacy character id ('vera') — remap those too.
+    let portraitKey = beat.portrait || getPortraitKey(beat.speaker);
+    if (portraitKey && !this.scene.textures.exists(portraitKey) && CHARACTER_MAP[portraitKey]) {
+      portraitKey = characterPortraitKey(portraitKey);
+    }
     if (portraitKey && this.scene.textures.exists(portraitKey)) {
       this.portraitImage.setTexture(portraitKey);
       this.portraitImage.setPosition(px + PORTRAIT_SIZE / 2, py + PORTRAIT_SIZE / 2);
