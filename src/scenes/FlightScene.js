@@ -472,7 +472,10 @@ export default class FlightScene extends Phaser.Scene {
     if (isFirstVisit && this.questManager) {
       const visitReady = this.questManager.updateProgress('visit_system', {});
       this.questManager.updateProgress('visit_system_specific', { system: sysData.name });
-      if (visitReady.length > 0) {
+      // v0.9.a: Outrider Contact completion plays its cutscene at the trigger
+      if (visitReady.includes('quest_outrider_contact')) {
+        this.time.delayedCall(2500, () => this.playCutscene('outrider_contact'));
+      } else if (visitReady.length > 0) {
         this.time.delayedCall(3000, () => {
           this.textQueue.enqueue({ type: 'bark', speaker: 'pepper', data: { text: "Pepper: That's enough systems scouted. Let's report back." } });
         });
@@ -1615,6 +1618,19 @@ export default class FlightScene extends Phaser.Scene {
     this.lastActivityTime = Date.now();
   }
 
+  // ========== CUTSCENES (v0.9.a) ==========
+
+  // Play a registered cutscene once; optional continuation after resume.
+  playCutscene(id, afterFn = null) {
+    if (this.firedTriggers.has(id)) { if (afterFn) afterFn(); return false; }
+    this.firedTriggers.add(id);
+    if (afterFn) this.events.once('resume', () => this.time.delayedCall(50, afterFn));
+    this.scene.pause('FlightScene');
+    this.scene.launch('CutsceneScene', { beatId: id });
+    this.autoSave();
+    return true;
+  }
+
   // ========== STORY / BARK / TRANSMISSION (via TextQueue) ==========
 
   triggerStoryBeat(trigger) {
@@ -2514,6 +2530,12 @@ export default class FlightScene extends Phaser.Scene {
   tryDockOrLand() {
     if (this.invOpen || this.dialogueActive || this.tradeOpen) return;
     if (this.nearPlanetZion) {
+      // v0.9.a: first-ever dock at The Outpost plays the Vera intro,
+      // then re-enters the normal dock flow
+      if (!this.firedTriggers.has('vera_intro')) {
+        this.playCutscene('vera_intro', () => this.tryDockOrLand());
+        return;
+      }
       this.autoSave(); // save on every dock (reverted B32 regression)
       // H3: Show Vera's quest dialogue on hub dock before launching HubScene
       const vera = NPCS.find(n => n.id === 'quest_vera');
@@ -2600,6 +2622,15 @@ export default class FlightScene extends Phaser.Scene {
   tryDock() {
     if (!this.nearStation || this.invOpen || this.tradeOpen) return;
     console.log('Docking at:', this.nearStation.name, 'Type:', this.nearStation.stationType);
+    // v0.9.a: docking at The Stand with the booster quest done plays the
+    // emotional beat, then continues into the normal dock flow
+    if (this.currentSystem && this.currentSystem.data.name === 'The Stand'
+        && !this.firedTriggers.has('the_stand')
+        && (this.questManager.completedQuests.includes('quest_radio_booster')
+            || this.questManager.isQuestComplete('quest_radio_booster'))) {
+      this.playCutscene('the_stand', () => this.tryDock());
+      return;
+    }
     this.autoSave(); // save on every station dock
     // Emergency fuel refill
     if (this.outOfFuel) {

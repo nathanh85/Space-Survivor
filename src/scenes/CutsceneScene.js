@@ -14,6 +14,7 @@ const _PEPPER_DEFAULT = characterPortraitKey('pepper', 'neutral_2');
 const SPEAKER_COLORS = {
   PEPPER: '#87CEEB', PAX: '#e67e22', 'M.O.T.H.E.R.': '#e74c3c',
   OUTRIDER: '#2ecc71', GRIX: '#f39c12', VERA: '#3498db', '???': '#999999',
+  HARLAN: '#c0392b',
 };
 
 export default class CutsceneScene extends Phaser.Scene {

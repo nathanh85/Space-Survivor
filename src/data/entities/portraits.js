@@ -79,6 +79,14 @@ export const CHARACTER_MAP = {
   smuggler: { portraitId: 'human_male_2',   defaultExpr: 'smirk_2',   tint: 0xd9c48c }, // share actor w/ father, differentiated by tint later
   mechanic: { portraitId: 'human_female_2', defaultExpr: 'neutral_2', tint: null },
 
+  // --- Act 1 (v0.9.a) ---------------------------------------------------------
+  // ⚑ FABLE CALL per DIALOGUE_SCRIPT_FINAL: harlan → human_male_2 (shares
+  // actor with father; tint differentiation later). Script suggested
+  // "viking_1 or nearest unused" for outrider — no viking_1 in manifest,
+  // nearest unused male actor is elf_male_1. Veto with one line if wrong.
+  harlan:   { portraitId: 'human_male_2',   defaultExpr: 'neutral_2', tint: 0xccb090 },
+  outrider: { portraitId: 'elf_male_1',     defaultExpr: 'neutral_2', tint: null },
+
   // --- Rift / antagonists ---------------------------------------------------
   demon_matron: { portraitId: 'demon_female_1', defaultExpr: 'smirk_2', tint: null },
   ronin:    { portraitId: 'samurai_female_1', defaultExpr: 'neutral_2', tint: null },
